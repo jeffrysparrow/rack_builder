@@ -1,5 +1,6 @@
 import { Component, lazy, Suspense, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { DeliveryDetails } from './DeliveryDetails';
 import { calculateRack, defaultConfiguration, finishes, getRackToteType, MAX_RACK_SIZE } from '../config/rack';
 import type { RackConfiguration } from '../config/rack';
 import { estimatePrice, rackRates } from '../config/pricing';
@@ -17,22 +18,27 @@ class ViewerBoundary extends Component<{ children: ReactNode }, { failed: boolea
   }
 }
 
-function Icon({ name }: { name: 'rack' | 'orbit' | 'reset' | 'mouse' }) {
+function Icon({ name }: { name: 'rack' | 'orbit' | 'reset' | 'mouse' | 'delivery' }) {
   const lines: Record<typeof name, ReactNode> = {
     rack: <><rect x="3" y="3" width="18" height="17" rx="1.5" /><path d="M3 9h18M3 14h18M9 3v17m6-17v17M6 20v2m12-2v2" /></>,
     orbit: <><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-30 12 12)" /><ellipse cx="12" cy="12" rx="4" ry="10" transform="rotate(-30 12 12)" /></>,
     reset: <><path d="M3 11a9 9 0 1 1 2.4 7M3 5v6h6" /></>,
+    delivery: <><path d="M2 5h12v12H7m7 0h2m4 0h2v-5l-3-4h-5M2 17h1m11-5h8" /><circle cx="5" cy="17" r="2" /><circle cx="18" cy="17" r="2" /></>,
     mouse: <><rect x="6.5" y="3" width="11" height="18" rx="5.5" /><path d="M12 7v4" /></>,
   };
   return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round">{lines[name]}</svg>;
 }
 
-function Stepper({ label, value, onChange }: { label: string; value: number; onChange: (delta: number) => void }) {
+const minimumRackSize = { columns: 2, rows: 1 };
+
+function Stepper({ label, value, minimum, onChange }: {
+  label: string; value: number; minimum: number; onChange: (delta: number) => void;
+}) {
   return <div className="stepper-field">
     <span className="field-label">{label}</span>
     <div className="stepper" role="group" aria-label={label}>
-      <button type="button" disabled={value === 1} aria-label={`Fewer ${label.toLowerCase()}`} onClick={() => onChange(-1)}>−</button>
+      <button type="button" disabled={value <= minimum} aria-label={`Fewer ${label.toLowerCase()}`} onClick={() => onChange(-1)}>−</button>
       <output aria-label={label}>{value}</output>
       <button type="button" disabled={value >= MAX_RACK_SIZE} aria-label={`More ${label.toLowerCase()}`} onClick={() => onChange(1)}>+</button>
     </div>
@@ -69,7 +75,7 @@ export function Configurator() {
   };
   const changeLayout = (axis: 'columns' | 'rows', delta: number) => {
     setConfig((current) => {
-      const size = Math.max(1, Math.min(MAX_RACK_SIZE, current[axis] + delta));
+      const size = Math.max(minimumRackSize[axis], Math.min(MAX_RACK_SIZE, current[axis] + delta));
       return { ...current, [axis]: size };
     });
   };
@@ -81,8 +87,14 @@ export function Configurator() {
     </header>
     <main className="workspace">
       <div className="page-intro">
-        <h1>Wooden tote rack</h1>
-        <p>Set your layout, customize the rack, and inspect it in 3D.</p>
+        <div className="intro-copy">
+          <h1>Wooden tote rack</h1>
+          <p>Set your layout, customize the rack, and inspect it in 3D.</p>
+        </div>
+        <div className="delivery-banner">
+          <span className="delivery-icon"><Icon name="delivery" /></span>
+          <span><strong>Free local delivery</strong><span>First 15 road miles free, then $2 per extra mile</span></span>
+        </div>
       </div>
       <div className="builder">
         <section className="viewer" aria-label="Interactive rack preview">
@@ -109,10 +121,9 @@ export function Configurator() {
           <section className="setting-section">
             <div className="section-heading"><h2>Rack layout</h2><span className="capacity">{capacity} tote {capacity === 1 ? 'space' : 'spaces'}</span></div>
             <div className="stepper-grid">
-              <Stepper label="Columns" value={config.columns} onChange={(delta) => changeLayout('columns', delta)} />
-              <Stepper label="Rows" value={config.rows} onChange={(delta) => changeLayout('rows', delta)} />
+              <Stepper label="Columns" value={config.columns} minimum={minimumRackSize.columns} onChange={(delta) => changeLayout('columns', delta)} />
+              <Stepper label="Rows" value={config.rows} minimum={minimumRackSize.rows} onChange={(delta) => changeLayout('rows', delta)} />
             </div>
-            <p className="layout-help">Up to {MAX_RACK_SIZE} columns and {MAX_RACK_SIZE} rows per rack. For more width, place separate racks side by side on the floor.</p>
           </section>
           <section className="setting-section">
             <label className="tote-field" htmlFor="tote-brand">Tote brand</label>
@@ -162,7 +173,7 @@ export function Configurator() {
               <div><dt>Height</dt><dd>{Math.ceil(layout.cuts.height)}<small> in</small></dd></div>
               <div><dt>Depth</dt><dd>{Math.ceil(layout.cuts.depth)}<small> in</small></dd></div>
             </dl>
-            <p className="layout-help">Rounded up to whole inches. Depth includes 1 in for rear bracing. Height is measured to the top crossboards.</p>
+            <p className="layout-help">Rounded up to whole inches. Depth includes 1 in for rear bracing.</p>
           </section>
           <section className="setting-section pricing" aria-labelledby="pricing-heading">
             <h2 id="pricing-heading">Price breakdown</h2>
@@ -171,11 +182,13 @@ export function Configurator() {
               {price.top > 0 && <div><dt>Top panel</dt><dd>{dollars.format(price.top)}</dd></div>}
               {price.wheelQuantity > 0 && <div><dt>Casters · {price.wheelQuantity}</dt><dd>{dollars.format(price.wheels)}</dd></div>}
               {price.toteQuantity > 0 && <div><dt>Storage totes · {price.toteQuantity}</dt><dd>{dollars.format(price.totes)}</dd></div>}
-              <div className="price-total"><dt>Estimated total</dt><dd aria-live="polite">{dollars.format(price.total)}</dd></div>
+              <div className="price-total"><dt>Rack &amp; accessories total</dt><dd aria-live="polite">{dollars.format(price.total)}</dd></div>
             </dl>
+            <a className="delivery-next" href="#delivery-details">Continue to delivery</a>
           </section>
         </aside>
       </div>
+      <DeliveryDetails rackTotal={price.total} />
       <section className="settings cut-list" aria-labelledby="cut-list-heading">
         <h2 id="cut-list-heading">2×4 cut list</h2>
         <table aria-labelledby="cut-list-heading">

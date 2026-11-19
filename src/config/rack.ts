@@ -60,10 +60,12 @@ export function calculateCutList(config: RackConfiguration) {
   const widthAllowance = columns === 5 ? 3 / 8 : columns >= 3 ? 1 / 4 : 0;
   const width = columns * bayWidth + (columns + 1) * boardThickness + widthAllowance;
   const lift = includeCasters ? casterLift : 0;
+  const frameHeight = uprightLength + 2 * boardThickness + lift;
+  const panelHeight = config.topMaterial === 'none' ? 0 : measurements.lumber.topThickness / INCH;
 
   return {
-    rungLength, uprightLength, width, lift,
-    height: uprightLength + 2 * boardThickness + lift,
+    rungLength, uprightLength, width, lift, frameHeight,
+    height: frameHeight + panelHeight,
     depth: rungLength + 1,
     pieces: [
       { name: 'Uprights', quantity: 2 * (columns + 1), length: uprightLength },
@@ -94,7 +96,7 @@ export function calculateRack(config: RackConfiguration) {
   const casterCount = getCasterCount(config.columns);
   const uprightHeight = cuts.uprightLength * INCH;
   const rowPitch = uprightHeight / config.rows;
-  const topY = cuts.height * INCH;
+  const topY = cuts.frameHeight * INCH;
   const frameDepth = cuts.rungLength * INCH;
   const postZ = (frameDepth - face) / 2;
   const rearFace = -frameDepth / 2;
@@ -178,6 +180,6 @@ export function calculateRack(config: RackConfiguration) {
   }
 
   return { boards, bins, casters, casterCount, casterScale, toteScale, cuts, columns: config.columns,
-    width, height: topY + (topMaterial === 'none' ? 0 : topThickness),
+    width, height: cuts.height * INCH,
     depth: frameDepth + (plywoodBracing ? topThickness : thickness) };
 }

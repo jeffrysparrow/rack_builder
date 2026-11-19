@@ -5,3 +5,8 @@ __pycache__/
 
 # User-supplied reference photos and product diagrams
 /references/
+
+# Server-only delivery settings
+/.env
+/.env.*
+!/.env.example

@@ -60,7 +60,7 @@ The cut list displays inches in fractions to the nearest 1/8 in. Customer dimens
 - Upright lengths for one through five rows are 16.5, 32, 47.5, 63, and 79 in. The cut list counts one more upright than columns on each of the front and rear frames.
 - HDX and Sterilite use 20.25 in bays and 29 in rungs. Other brands use 21 in bays and 30 in rungs. The list counts two rungs per bay.
 - Four crossboards run the full width, calculated as the total bay width plus 1.5 in per upright across one face. Each crossboard gets an extra 1/4 in at three or four columns, or 3/8 in at five columns.
-- Height to the top crossboards is the upright length plus 3 in, plus 5.5 in when casters are enabled. The preview shows the top panel above the crossboards. Choose No top panel for an open frame. Panel cuts and any panel contribution to the customer height are pending.
+- Overall height includes the uprights, both crossboards (3 in combined), the caster lift (5.5 in when selected), and any selected top panel. The height calculation and preview use the same modeled panel thickness. Panel cuts are pending.
 - Customer depth is rung length plus a 1 in allowance for rear bracing. On one- to four-column racks, plywood tops show two matching rear strips. MDF and open-top frames use a representative full-width rear 2×4 with short mitered braces in the lower rear bays. Five-column racks use 2×4s across the middle three bays and the lower mitered braces for every top option. The preview assumes one horizontal brace for one to three rows and two for four to five rows on five-column racks. Brace placement and cut sizes are pending confirmation.
 
 The preview spaces the rungs evenly within the uprights and estimates the tote support-rim position. Measurements from the actual rack and tote rim can refine those details.
@@ -70,3 +70,9 @@ The preview spaces the rungs evenly within the uprights and estimates the tote s
 The estimate uses $20 per slot, $60 for standard plywood, $90 for premium plywood or MDF, and $15 per caster. Open-top racks have no top charge.
 
 Totes appear in the preview by default. The separate delivery add-on starts off. When selected, it includes one Greenmade Costco tote per slot at $15 each and sizes the rack for Greenmade. Turning it off restores the customer’s previous tote brand.
+
+### Address-based delivery quotes
+
+Set `DELIVERY_ORIGIN` and a Google Routes API key as `GOOGLE_MAPS_API_KEY` in an ignored `.env.local` file, then restart Vite. Both settings are server-only. Development and local preview expose `POST /api/delivery-quote`. A production deployment must mount the same endpoint on its server or serverless platform. Static assets alone cannot calculate delivery quotes.
+
+The endpoint sends the route origin and destination street, city, state, and ZIP code to Google Routes. Apartment details and delivery notes stay in the current page. The endpoint returns only the computed fee. The first 15 one-way road miles are free, then the rate is $2 per additional mile, with the total fee rounded to the nearest dollar.
