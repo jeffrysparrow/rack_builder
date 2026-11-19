@@ -1,8 +1,9 @@
 import { Component, lazy, Suspense, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { calculateRack, defaultConfiguration, finishes, estimatePrice, MAX_RACK_SIZE } from '../config/rack';
+import { calculateRack, defaultConfiguration, finishes, getRackToteType, MAX_RACK_SIZE } from '../config/rack';
 import type { RackConfiguration } from '../config/rack';
-import { isToteType, toteProfiles } from '../config/totes';
+import { estimatePrice, rackRates } from '../config/pricing';
+import { deliveryToteBrand, isToteType, toteProfiles } from '../config/totes';
 
 const Studio = lazy(() => import('../three/Studio').then(({ Studio }) => ({ default: Studio })));
 
@@ -47,6 +48,7 @@ function Toggle({ label, description, checked, onChange }: {
   </label>;
 }
 
+const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 const eighthFractions = ['', '1/8', '1/4', '3/8', '1/2', '5/8', '3/4', '7/8'];
 
 function formatCutLength(inches: number) {
@@ -114,14 +116,21 @@ export function Configurator() {
           </section>
           <section className="setting-section">
             <label className="tote-field" htmlFor="tote-brand">Tote brand</label>
-            <select className="tote-select" id="tote-brand" value={config.binType} aria-describedby="tote-fit-help"
+            <select className="tote-select" id="tote-brand" value={getRackToteType(config)}
+              disabled={config.includeTotesWithDelivery} aria-describedby="tote-fit-help"
               onChange={(event) => {
                 const value = event.currentTarget.value;
                 if (isToteType(value)) update('binType', value);
               }}>
               {Object.entries(toteProfiles).map(([id, profile]) => <option key={id} value={id}>{profile.label}</option>)}
             </select>
-            <p className="layout-help" id="tote-fit-help">27-gallon tote. The selected brand sets the bay width and rung length.</p>
+            <p className="layout-help" id="tote-fit-help">
+              {config.includeTotesWithDelivery
+                ? `This rack is sized for the ${deliveryToteBrand} totes included with delivery.`
+                : 'Choose the 27-gallon tote brand you plan to use so we can size your rack.'}
+            </p>
+            <Toggle label="Show totes in preview" description="Display setting only" checked={config.includeBins}
+              onChange={(value) => update('includeBins', value)} />
           </section>
           <section className="setting-section">
             <fieldset>
@@ -141,10 +150,10 @@ export function Configurator() {
           </section>
           <section className="setting-section accessories">
             <h2>Accessories</h2>
-            <Toggle label="Storage totes" description="Show totes in the 3D preview" checked={config.includeBins}
-              onChange={(value) => update('includeBins', value)} />
-            <Toggle label="Swivel casters" description={`${layout.casterCount} orange wheels with brakes`} checked={config.includeCasters}
-              onChange={(value) => update('includeCasters', value)} />
+            <Toggle label="Swivel casters" description={`${layout.casterCount} wheels · ${dollars.format(rackRates.caster)} each`}
+              checked={config.includeCasters} onChange={(value) => update('includeCasters', value)} />
+            <Toggle label="Add totes with delivery" description={`${capacity} ${deliveryToteBrand} totes · ${dollars.format(rackRates.tote)} each`}
+              checked={config.includeTotesWithDelivery} onChange={(value) => update('includeTotesWithDelivery', value)} />
           </section>
           <section className="setting-section dimensions">
             <h2>Overall rack size</h2>
@@ -154,7 +163,16 @@ export function Configurator() {
               <div><dt>Depth</dt><dd>{Math.ceil(layout.cuts.depth)}<small> in</small></dd></div>
             </dl>
             <p className="layout-help">Rounded up to whole inches. Depth includes 1 in for rear bracing. Height is measured to the top crossboards.</p>
-            {price !== null && <p>Estimated price {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(price)}</p>}
+          </section>
+          <section className="setting-section pricing" aria-labelledby="pricing-heading">
+            <h2 id="pricing-heading">Price breakdown</h2>
+            <dl className="price-lines">
+              <div><dt>Rack frame · {capacity} {capacity === 1 ? 'slot' : 'slots'}</dt><dd>{dollars.format(price.frame)}</dd></div>
+              {price.top > 0 && <div><dt>Top panel</dt><dd>{dollars.format(price.top)}</dd></div>}
+              {price.wheelQuantity > 0 && <div><dt>Casters · {price.wheelQuantity}</dt><dd>{dollars.format(price.wheels)}</dd></div>}
+              {price.toteQuantity > 0 && <div><dt>Storage totes · {price.toteQuantity}</dt><dd>{dollars.format(price.totes)}</dd></div>}
+              <div className="price-total"><dt>Estimated total</dt><dd aria-live="polite">{dollars.format(price.total)}</dd></div>
+            </dl>
           </section>
         </aside>
       </div>

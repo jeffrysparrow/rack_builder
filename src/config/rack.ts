@@ -1,5 +1,5 @@
 import measurements from './measurements.json';
-import { toteProfiles } from './totes';
+import { deliveryToteType, toteProfiles } from './totes';
 import type { ToteType } from './totes';
 
 export const MAX_RACK_SIZE = 5;
@@ -10,13 +10,14 @@ export interface RackConfiguration {
   rows: number;
   binType: ToteType;
   includeBins: boolean;
+  includeTotesWithDelivery: boolean;
   includeCasters: boolean;
   topMaterial: TopMaterial | 'none';
 }
 
 export const defaultConfiguration: RackConfiguration = {
   columns: 4, rows: 4, binType: 'hdx-27', includeBins: true,
-  includeCasters: true, topMaterial: 'standard-plywood',
+  includeCasters: true, includeTotesWithDelivery: false, topMaterial: 'standard-plywood',
 };
 
 export const finishes: { id: RackConfiguration['topMaterial']; label: string; color: string; detail?: string }[] = [
@@ -45,7 +46,13 @@ const uprightLengths = [16.5, 32, 47.5, 63, 79];
 const boardThickness = 1.5;
 const casterLift = 5.5;
 
-export function calculateCutList({ columns, rows, binType, includeCasters }: RackConfiguration) {
+export function getRackToteType(config: RackConfiguration): ToteType {
+  return config.includeTotesWithDelivery ? deliveryToteType : config.binType;
+}
+
+export function calculateCutList(config: RackConfiguration) {
+  const { columns, rows, includeCasters } = config;
+  const binType = getRackToteType(config);
   const narrow = binType === 'hdx-27' || binType === 'sterilite-27';
   const bayWidth = narrow ? 20.25 : 21;
   const rungLength = narrow ? 29 : 30;
@@ -66,10 +73,14 @@ export function calculateCutList({ columns, rows, binType, includeCasters }: Rac
   };
 }
 
+export function getCasterCount(columns: number) {
+  return columns >= 4 ? 6 : 4;
+}
+
 export function calculateRack(config: RackConfiguration) {
   const cuts = calculateCutList(config);
   const { tote: referenceTote, caster, lumber } = measurements;
-  const tote = toteProfiles[config.binType].dimensions;
+  const tote = toteProfiles[getRackToteType(config)].dimensions;
   const toteScale: Point = [
     tote.width / referenceTote.width, tote.height / referenceTote.height, tote.depth / referenceTote.depth,
   ];
@@ -80,7 +91,7 @@ export function calculateRack(config: RackConfiguration) {
   const pitch = (width - thickness) / config.columns;
   const opening = pitch - thickness;
   const lift = cuts.lift * INCH;
-  const casterCount = config.columns >= 4 ? 6 : 4;
+  const casterCount = getCasterCount(config.columns);
   const uprightHeight = cuts.uprightLength * INCH;
   const rowPitch = uprightHeight / config.rows;
   const topY = cuts.height * INCH;
@@ -166,11 +177,7 @@ export function calculateRack(config: RackConfiguration) {
     }
   }
 
-  return { boards, bins, casters, casterCount, casterScale, toteScale, cuts,
+  return { boards, bins, casters, casterCount, casterScale, toteScale, cuts, columns: config.columns,
     width, height: topY + (topMaterial === 'none' ? 0 : topThickness),
     depth: frameDepth + (plywoodBracing ? topThickness : thickness) };
-}
-
-export function estimatePrice(_configuration: RackConfiguration): number | null {
-  return null;
 }

@@ -21,7 +21,7 @@ npm run preview
 ## Project structure
 
 - `src/config/measurements.json` defines dimensions in meters. Blender and the browser share the same tote and caster dimensions.
-- `src/config/rack.ts` holds the typed configuration, top material presets, pricing hook, and pure layout calculation. The layout places front and rear uprights, continuous base and header boards, paired depth-running rails for each tote, a top panel, and symmetric caster pairs.
+- `src/config/rack.ts` holds the typed configuration, top material presets, and pure layout calculation. The layout places front and rear uprights, continuous base and header boards, paired depth-running rails for each tote, a top panel, and symmetric caster pairs.
 - `src/three/` contains the reusable rounded wood board, studio, rack assembly, and instanced tote and caster components. Directional procedural grain follows each board's length. Plywood textures show plies at the edge, while MDF has a fine fiber texture. Wood materials are procedural approximations.
 - `blender/scripts/build_assets.py` generates the models from geometry and material definitions. Each export batches meshes by material for GPU instancing. The GLBs are checked in, so Blender is optional for running the app.
 - The local, Git-ignored `references/` folder holds the supplied garage photos and product diagrams used to model the rack.
@@ -64,3 +64,9 @@ The cut list displays inches in fractions to the nearest 1/8 in. Customer dimens
 - Customer depth is rung length plus a 1 in allowance for rear bracing. On one- to four-column racks, plywood tops show two matching rear strips. MDF and open-top frames use a representative full-width rear 2×4 with short mitered braces in the lower rear bays. Five-column racks use 2×4s across the middle three bays and the lower mitered braces for every top option. The preview assumes one horizontal brace for one to three rows and two for four to five rows on five-column racks. Brace placement and cut sizes are pending confirmation.
 
 The preview spaces the rungs evenly within the uprights and estimates the tote support-rim position. Measurements from the actual rack and tote rim can refine those details.
+
+## Pricing and tote display
+
+The estimate uses $20 per slot, $60 for standard plywood, $90 for premium plywood or MDF, and $15 per caster. Open-top racks have no top charge.
+
+Totes appear in the preview by default. The separate delivery add-on starts off. When selected, it includes one Greenmade Costco tote per slot at $15 each and sizes the rack for Greenmade. Turning it off restores the customer’s previous tote brand.

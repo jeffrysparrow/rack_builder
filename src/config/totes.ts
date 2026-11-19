@@ -8,8 +8,10 @@ const wider = {
   depth: hdx.depth + inch,
 };
 
+export const deliveryToteBrand = 'Greenmade';
+
 export const toteProfiles = {
-  'greenmade-27': { label: 'Greenmade (Costco)', dimensions: wider },
+  'greenmade-27': { label: `${deliveryToteBrand} (Costco)`, dimensions: wider },
   'hdx-27': { label: 'HDX (Home Depot)', dimensions: hdx },
   'project-source-27': { label: 'Project Source (Lowe’s)', dimensions: wider },
   'hyper-tough-27': { label: 'Hyper Tough (Walmart)', dimensions: wider },
@@ -26,6 +28,7 @@ export const toteProfiles = {
 };
 
 export type ToteType = keyof typeof toteProfiles;
+export const deliveryToteType = 'greenmade-27';
 
 export function isToteType(value: string): value is ToteType {
   return Object.hasOwn(toteProfiles, value);

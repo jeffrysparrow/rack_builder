@@ -18,7 +18,7 @@ function Framing({ layout, reset, spin }: { layout: Layout; reset: number; spin:
   const controls = useRef<OrbitControlsImpl>(null);
   const offset = useMemo(() => new Vector3(), []);
   const target = useMemo(() => new Vector3(), []);
-  const previousDistance = useRef(0);
+  const previousFrame = useRef({ distance: 0, columns: 0, height: 0, aspect: 0 });
   const previousReset = useRef(reset);
   const resetting = useRef(false);
   const { camera, size } = useThree();
@@ -27,19 +27,24 @@ function Framing({ layout, reset, spin }: { layout: Layout; reset: number; spin:
   useFrame((_, dt) => {
     const orbit = controls.current;
     if (!orbit) return;
-    const { width, height, depth } = layout;
+    const { width, height, depth, columns } = layout;
     const distance = Math.max(height / .68, Math.hypot(width, depth) / (.67 * aspect))
       * 1.56 + depth * .28;
-    orbit.minDistance = distance * .34;
-    orbit.maxDistance = distance * 2.6;
+    const previous = previousFrame.current;
+    const reframe = columns !== previous.columns || height !== previous.height || aspect !== previous.aspect;
+    if (previousReset.current !== reset) resetting.current = true;
+    if (reframe || resetting.current) {
+      orbit.minDistance = distance * .34;
+      orbit.maxDistance = distance * 2.6;
+    }
     target.set(0, height * .49, 0);
 
-    if (!previousDistance.current) {
+    if (!previous.distance) {
       camera.position.copy(home).multiplyScalar(distance).add(target);
     } else {
       offset.copy(camera.position).sub(orbit.target);
-      const length = offset.length() * distance / previousDistance.current;
-      if (previousReset.current !== reset) resetting.current = true;
+      // A tote-brand change adjusts width and depth while leaving the camera distance alone.
+      const length = reframe ? offset.length() * distance / previous.distance : offset.length();
       if (resetting.current) {
         const azimuth = Math.atan2(offset.x, offset.z);
         const polar = Math.acos(MathUtils.clamp(offset.y / offset.length(), -1, 1));
@@ -57,7 +62,10 @@ function Framing({ layout, reset, spin }: { layout: Layout; reset: number; spin:
       }
       camera.position.copy(offset).add(target);
     }
-    previousDistance.current = distance;
+    previous.distance = distance;
+    previous.columns = columns;
+    previous.height = height;
+    previous.aspect = aspect;
     previousReset.current = reset;
     orbit.target.copy(target);
     camera.lookAt(target);
