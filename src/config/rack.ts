@@ -11,7 +11,7 @@ export interface RackConfiguration {
   binType: ToteType;
   includeBins: boolean;
   includeCasters: boolean;
-  topMaterial: TopMaterial;
+  topMaterial: TopMaterial | 'none';
 }
 
 export const defaultConfiguration: RackConfiguration = {
@@ -19,10 +19,11 @@ export const defaultConfiguration: RackConfiguration = {
   includeCasters: true, topMaterial: 'standard-plywood',
 };
 
-export const finishes: { id: TopMaterial; label: string; color: string; detail: string }[] = [
+export const finishes: { id: RackConfiguration['topMaterial']; label: string; color: string; detail?: string }[] = [
   { id: 'standard-plywood', label: 'Standard plywood', color: '#ceb187', detail: '19/32 in pine plywood · bold grain' },
   { id: 'premium-plywood', label: 'Premium plywood', color: '#e2d6bf', detail: '23/32 in cabinet-grade plywood' },
   { id: 'mdf', label: 'MDF', color: '#a57e55', detail: 'Smooth face · uniform edge' },
+  { id: 'none', label: 'No top panel', color: 'transparent' },
 ];
 
 export type Point = [number, number, number];
@@ -33,6 +34,9 @@ export interface BoardSpec {
   size: Point;
   grain: Axis;
   material: TopMaterial | 'lumber';
+  panelFace?: 1 | 2;
+  rotationZ?: number;
+  mitered?: boolean;
 }
 export interface PartPlacement { id: string; position: Point; yaw?: number }
 
@@ -82,6 +86,10 @@ export function calculateRack(config: RackConfiguration) {
   const topY = cuts.height * INCH;
   const frameDepth = cuts.rungLength * INCH;
   const postZ = (frameDepth - face) / 2;
+  const rearFace = -frameDepth / 2;
+  const topMaterial = config.topMaterial;
+  const fiveWide = config.columns === 5;
+  const plywoodBracing = !fiveWide && (topMaterial === 'standard-plywood' || topMaterial === 'premium-plywood');
   const boards: BoardSpec[] = [];
   const bins: PartPlacement[] = [];
   const casters: PartPlacement[] = [];
@@ -122,10 +130,45 @@ export function calculateRack(config: RackConfiguration) {
     }
   }
 
-  add('top', [0, topY + topThickness / 2, 0], [width, topThickness, frameDepth], 0, config.topMaterial);
+  if (topMaterial !== 'none') {
+    boards.push({ id: 'top', position: [0, topY + topThickness / 2, 0],
+      size: [width, topThickness, frameDepth], grain: 0, material: topMaterial, panelFace: 1 });
+  }
+
+  // Brace placement follows the supplied examples. The brace cut sizes are still to be confirmed.
+  if (plywoodBracing) {
+    const stripHeight = 7 * INCH;
+    const z = rearFace - topThickness / 2;
+    for (const [id, y] of [['rear-ply-upper', topY - stripHeight / 2],
+      ['rear-ply-lower', lift + stripHeight / 2]] as const) {
+      boards.push({ id, position: [0, y, z], size: [width, stripHeight, topThickness],
+        grain: 0, material: topMaterial, panelFace: 2 });
+    }
+  } else {
+    const baseY = lift + thickness;
+    const leg = 6 * INCH;
+    const braceWidth = fiveWide ? 3 * pitch + thickness : width;
+    const braceCount = fiveWide && config.rows >= 4 ? 2 : 1;
+    for (let brace = 1; brace <= braceCount; brace++) {
+      const y = baseY + uprightHeight * brace / (braceCount + 1);
+      add(`rear-crossbrace-${brace}`, [0, y, rearFace - thickness / 2], [braceWidth, face, thickness], 0);
+    }
+    for (let bay = 0; bay < config.columns; bay++) {
+      for (const side of [-1, 1]) {
+        const upright = postX(side === -1 ? bay : bay + 1);
+        boards.push({
+          id: `rear-miter-${bay}-${side}`,
+          position: [upright - side * (thickness + leg) / 2, baseY + leg / 2, rearFace + thickness / 2],
+          size: [Math.SQRT2 * leg, face, thickness],
+          rotationZ: side * Math.PI / 4, mitered: true, grain: 0, material: 'lumber',
+        });
+      }
+    }
+  }
 
   return { boards, bins, casters, casterCount, casterScale, toteScale, cuts,
-    width, height: topY + topThickness, depth: frameDepth };
+    width, height: topY + (topMaterial === 'none' ? 0 : topThickness),
+    depth: frameDepth + (plywoodBracing ? topThickness : thickness) };
 }
 
 export function estimatePrice(_configuration: RackConfiguration): number | null {

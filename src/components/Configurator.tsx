@@ -80,7 +80,7 @@ export function Configurator() {
     <main className="workspace">
       <div className="page-intro">
         <h1>Wooden tote rack</h1>
-        <p>Set your layout, choose a top, and inspect your rack in 3D.</p>
+        <p>Set your layout, customize the rack, and inspect it in 3D.</p>
       </div>
       <div className="builder">
         <section className="viewer" aria-label="Interactive rack preview">
@@ -125,11 +125,14 @@ export function Configurator() {
           </section>
           <section className="setting-section">
             <fieldset>
-              <legend>Top material</legend>
+              <legend>Top panel</legend>
               <div className="finish-list">
                 {finishes.map((finish) => <label className="finish-option" key={finish.id}>
                   <span className={`swatch ${finish.id}`} style={{ backgroundColor: finish.color }} />
-                  <span><span className="option-title">{finish.label}</span><span className="option-detail">{finish.detail}</span></span>
+                  <span>
+                    <span className="option-title">{finish.label}</span>
+                    {finish.detail && <span className="option-detail">{finish.detail}</span>}
+                  </span>
                   <input type="radio" name="top-material" checked={config.topMaterial === finish.id}
                     onChange={() => update('topMaterial', finish.id)} />
                 </label>)}

@@ -74,7 +74,8 @@ legend { padding: 0; }
 .finish-option:hover { border-color: #909d8d; }
 .finish-option:has(:checked) { background: #eef2e9; border-color: #84947e; }
 .swatch { height: 1.85rem; border-radius: .25rem; border: 1px solid #1d190f24; background-image: repeating-linear-gradient(173deg, transparent 0 4px, #6e4a2c24 5px, transparent 7px 8px); }
-.swatch.mdf { background-image: none; }
+.swatch.mdf, .swatch.none { background-image: none; }
+.swatch.none { border: 1px dashed #8f9388; }
 .option-title, .option-detail { display: block; }
 .option-title { font-size: .875rem; font-weight: 650; line-height: 1.25; }
 .option-detail { color: var(--muted); font-size: .78rem; line-height: 1.35; margin-top: .14rem; }

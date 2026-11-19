@@ -5,22 +5,30 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import type { BoardSpec, Point } from '../config/rack';
 import { woodMaterial } from './wood';
 
-function boardGeometry(size: Point, grain: number, top: boolean, seed: number) {
+function boardGeometry(size: Point, grain: number, panelFace: BoardSpec['panelFace'], mitered: boolean, seed: number) {
   const geometry = new RoundedBoxGeometry(...size, 1, .0016);
   const pos = geometry.attributes.position;
   const uv = geometry.attributes.uv;
+  if (mitered) {
+    // Opposite 45° cuts seat against the base and the adjacent upright.
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      pos.setX(i, x + 2 * x / size[0] * pos.getY(i));
+    }
+    geometry.computeVertexNormals();
+  }
   // RoundedBoxGeometry groups follow +X, -X, +Y, -Y, +Z, -Z.
   const bySurface: number[][] = [[], [], []];
   for (const [index, group] of geometry.groups.entries()) {
     const axis = Math.floor(index / 2);
-    const end = !top && axis === grain;
-    const broad = top ? axis === 1 : !end;
-    const u = end ? (axis + 1) % 3 : axis === grain ? 1 : grain;
+    const end = panelFace === undefined && axis === grain;
+    const broad = panelFace === undefined ? !end : axis === panelFace;
+    const u = end ? (axis + 1) % 3 : axis === grain && panelFace !== undefined ? 3 - grain - panelFace : grain;
     const v = [0, 1, 2].find((j) => j !== axis && j !== u) ?? 2;
     for (let vertex = group.start; vertex < group.start + group.count; vertex++) {
       uv.setXY(vertex,
         pos.getComponent(vertex, u) / (end ? .11 : 1.55) + seed,
-        top && !broad ? pos.getY(vertex) / size[1] + .5
+        panelFace !== undefined && !broad ? pos.getComponent(vertex, panelFace) / size[panelFace] + .5
           : pos.getComponent(vertex, v) / (end ? .11 : .34) + seed * .61);
     }
     const surface = bySurface[end ? 2 : broad ? 0 : 1];
@@ -56,16 +64,15 @@ function blendableWood() {
 }
 
 export function WoodBoard({ spec }: { spec: BoardSpec }) {
-  const { id, size, position, grain, material } = spec;
-  const top = id === 'top';
+  const { id, size, position, grain, material, panelFace, mitered = false, rotationZ = 0 } = spec;
   const [x, y, z] = size;
   const geometry = useMemo(() => {
     const seed = [...id].reduce((acc, char) => (Math.imul(acc, 31) + char.charCodeAt(0)) >>> 0, 0);
-    return boardGeometry([x, y, z], grain, top, (seed % 193) / 193);
-  }, [x, y, z, grain, top, id]);
+    return boardGeometry([x, y, z], grain, panelFace, mitered, (seed % 193) / 193);
+  }, [x, y, z, grain, panelFace, mitered, id]);
   useEffect(() => () => geometry.dispose(), [geometry]);
 
-  const blend = useMemo(() => top ? blendableWood() : undefined, [top]);
+  const blend = useMemo(() => panelFace !== undefined ? blendableWood() : undefined, [panelFace]);
   const surfaces = useMemo(() => blend?.map(({ material }) => material)
     ?? (['face', 'edge', 'end'] as const).map((face) => woodMaterial('lumber', face)), [blend]);
   useEffect(() => () => blend?.forEach(({ material }) => material.dispose()), [blend]);
@@ -96,6 +103,6 @@ export function WoodBoard({ spec }: { spec: BoardSpec }) {
     });
   });
 
-  return <mesh geometry={geometry} material={surfaces} position={position}
+  return <mesh geometry={geometry} material={surfaces} position={position} rotation-z={rotationZ}
     castShadow receiveShadow dispose={null} />;
 }

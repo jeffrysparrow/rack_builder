@@ -60,7 +60,7 @@ The cut list displays inches in fractions to the nearest 1/8 in. Customer dimens
 - Upright lengths for one through five rows are 16.5, 32, 47.5, 63, and 79 in. The cut list counts one more upright than columns on each of the front and rear frames.
 - HDX and Sterilite use 20.25 in bays and 29 in rungs. Other brands use 21 in bays and 30 in rungs. The list counts two rungs per bay.
 - Four crossboards run the full width, calculated as the total bay width plus 1.5 in per upright across one face. Each crossboard gets an extra 1/4 in at three or four columns, or 3/8 in at five columns.
-- Height to the top crossboards is the upright length plus 3 in, plus 5.5 in when casters are enabled. The preview shows the top panel above the crossboards. Panel cuts and any panel contribution to the customer height are pending.
-- Customer depth is rung length plus a 1 in allowance for rear bracing. Rear bracing geometry and cuts are pending.
+- Height to the top crossboards is the upright length plus 3 in, plus 5.5 in when casters are enabled. The preview shows the top panel above the crossboards. Choose No top panel for an open frame. Panel cuts and any panel contribution to the customer height are pending.
+- Customer depth is rung length plus a 1 in allowance for rear bracing. On one- to four-column racks, plywood tops show two matching rear strips. MDF and open-top frames use a representative full-width rear 2×4 with short mitered braces in the lower rear bays. Five-column racks use 2×4s across the middle three bays and the lower mitered braces for every top option. The preview assumes one horizontal brace for one to three rows and two for four to five rows on five-column racks. Brace placement and cut sizes are pending confirmation.
 
 The preview spaces the rungs evenly within the uprights and estimates the tote support-rim position. Measurements from the actual rack and tote rim can refine those details.
