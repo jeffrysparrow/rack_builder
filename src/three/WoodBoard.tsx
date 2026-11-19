@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { MathUtils, Mesh, MeshStandardMaterial, Texture, Vector3 } from 'three';
+import { MathUtils, MeshStandardMaterial, Texture, Vector2 } from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import type { BoardSpec, Point } from '../config/rack';
 import { woodMaterial } from './wood';
@@ -42,22 +42,22 @@ function blendableWood() {
     const material = original.clone();
     const nextMap = { value: original.map as Texture };
     const progress = { value: 0 };
+    const nextUvScale = { value: new Vector2(1, 1) };
     material.onBeforeCompile = (shader) => {
       shader.uniforms.nextWoodMap = nextMap;
       shader.uniforms.woodProgress = progress;
-      shader.fragmentShader = 'uniform sampler2D nextWoodMap; uniform float woodProgress;\n'
+      shader.uniforms.nextWoodUvScale = nextUvScale;
+      shader.fragmentShader = 'uniform sampler2D nextWoodMap; uniform float woodProgress; uniform vec2 nextWoodUvScale;\n'
         + shader.fragmentShader.replace('#include <map_fragment>',
-          '#include <map_fragment>\nvec4 nextWood = texture2D(nextWoodMap, vMapUv);\ndiffuseColor.rgb = mix(diffuseColor.rgb, nextWood.rgb * diffuse, woodProgress);');
+          '#include <map_fragment>\nvec4 nextWood = texture2D(nextWoodMap, vMapUv * nextWoodUvScale);\ndiffuseColor.rgb = mix(diffuseColor.rgb, nextWood.rgb * diffuse, woodProgress);');
     };
-    return { face, material, nextMap, progress };
+    return { face, material, nextMap, progress, nextUvScale };
   });
 }
 
-export function WoodBoard({ spec, animate }: { spec: BoardSpec; animate: boolean }) {
+export function WoodBoard({ spec }: { spec: BoardSpec }) {
   const { id, size, position, grain, material } = spec;
   const top = id === 'top';
-  const mesh = useRef<Mesh>(null);
-  const currentSize = useRef(new Vector3(...size).multiplyScalar(animate ? .86 : 1));
   const [x, y, z] = size;
   const geometry = useMemo(() => {
     const seed = [...id].reduce((acc, char) => (Math.imul(acc, 31) + char.charCodeAt(0)) >>> 0, 0);
@@ -74,19 +74,12 @@ export function WoodBoard({ spec, animate }: { spec: BoardSpec; animate: boolean
       if (entry.progress.value > .5) entry.material.map = entry.nextMap.value;
       entry.progress.value = 0;
       entry.nextMap.value = woodMaterial(material, entry.face).map!;
+      entry.nextUvScale.value.copy(entry.nextMap.value.repeat).divide(entry.material.map!.repeat);
     });
   }, [blend, material]);
 
-  const initialPosition = useRef<Point>(position);
-  const initialScale = useRef(animate ? .86 : 1);
   useFrame((_, dt) => {
-    if (!mesh.current) return;
     const damp = (a: number, b: number) => MathUtils.damp(a, b, 10, dt);
-    mesh.current.position.set(damp(mesh.current.position.x, position[0]),
-      damp(mesh.current.position.y, position[1]), damp(mesh.current.position.z, position[2]));
-    const state = currentSize.current;
-    state.set(damp(state.x, x), damp(state.y, y), damp(state.z, z));
-    mesh.current.scale.set(state.x / x, state.y / y, state.z / z);
     blend?.forEach((entry) => {
       if (entry.progress.value === 1) return;
       entry.progress.value = Math.min(1, entry.progress.value + dt * 3);
@@ -95,6 +88,7 @@ export function WoodBoard({ spec, animate }: { spec: BoardSpec; animate: boolean
       entry.material.bumpScale = damp(entry.material.bumpScale, next.bumpScale);
       if (entry.progress.value === 1) {
         entry.material.map = entry.nextMap.value;
+        entry.nextUvScale.value.set(1, 1);
         entry.material.bumpMap = next.bumpMap;
         entry.material.bumpScale = next.bumpScale;
         entry.material.roughness = next.roughness;
@@ -102,6 +96,6 @@ export function WoodBoard({ spec, animate }: { spec: BoardSpec; animate: boolean
     });
   });
 
-  return <mesh ref={mesh} geometry={geometry} material={surfaces}
-    position={initialPosition.current} scale={initialScale.current} castShadow receiveShadow dispose={null} />;
+  return <mesh geometry={geometry} material={surfaces} position={position}
+    castShadow receiveShadow dispose={null} />;
 }

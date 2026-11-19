@@ -36,17 +36,31 @@ blender -b --python-exit-code 1 --python blender/scripts/build_assets.py -- --pr
 
 This writes `public/models/tote.glb` and `public/models/caster.glb`, plus studio renders in `blender/previews/`. Omit `--preview` for an export-only run.
 
-## What to measure on the actual rack
+## Plywood top references
 
-The prototype starts at four columns by four rows because that layout has clear front and side references. The displayed size is an estimate for the configured assembly and includes the top, fitted totes, and caster envelope where applicable.
+- **Standard plywood** uses Plytanium 19/32 in southern yellow pine sheathing. The model shows bold grain, visible knots, and visible layers along the cut edge. [Product listing](https://www.homedepot.com/p/Plytanium-19-32-in-x-4-ft-x-8-ft-Rtd-Sheathing-Syp-195482/100004472)
+- **Premium plywood** uses 23/32 in cabinet-grade plywood. The model shows a smoother face with subtler grain and more even layers along the cut edge. [Product listing](https://www.homedepot.com/p/23-32-in-x-4-ft-x-8-ft-Cabinet-Grade-Plywood-Panel-Actual-0-688-in-x-48-in-x-96-in-1077486/302610611)
 
-| Detail | Current basis | Measurement that would improve it |
-| --- | --- | --- |
-| Caster | Supplied diagram shows 100 mm wheel diameter, 32 mm tread, 133 mm installed height, and a 92 × 62 mm plate. | Mounting hole centers, installed caster positions, and brake orientation. |
-| Lumber and top | Assumes dressed 2×4 members (1.5 × 3.5 in) and a roughly 3/4 in top. | Actual post, rail, and top thicknesses and top overhang. |
-| Rack envelope | Calculated from the bay pitch, a 705 mm frame depth, and the accessory geometry. | Outside width, depth, and height of one 4×4 rack with casters. |
-| Bay fit | Assumes a 516 mm clear opening, 412 mm vertical pitch, and a tote that hangs from its rim. | Clear width between posts, vertical distance between rail tops, and inside distance between the two rails in one bay. |
-| Tote | The supplied HDX diagram lists 28.5 × 19.6 × 15.2 in. The 19.6 in end faces forward in the rack. The support lip is estimated at 44 mm below the lid top. | Width and depth at the support rim and the actual lip-to-lid distance. A side photo of a tote pulled halfway out would clarify how it meets the rails. |
-| Hidden framing and mounting | Front and rear posts are linked by the rails, top, and perimeter base. Wheel counts are estimated as 4, 6, or 8 depending on the width. | Straight-on rear and underside views showing any bracing, base crosspieces, and how the caster plates are fastened. |
+The finish options display the nominal sheet sizes. The 3D preview uses a shared panel thickness of about 3/4 in.
 
-Model proportions and hardware details are approximate. Pricing is reserved through a nullable hook, and the tote model uses unbranded geometry.
+## Tote sizing
+
+The tote brand sets the bay width, rung length, and preview tote size, including when the totes are hidden. The 3D view uses the same tote model scaled to each profile.
+
+- HDX uses the supplied product diagram. Sterilite provisionally uses the same dimensions.
+- Greenmade, Project Source, and Hyper Tough provisionally use the HDX dimensions plus 3/4 in across the front and 1 in front to back. Their heights are assumed to match HDX.
+- Member’s Mark uses its listed 20.6 in short side, 30.6 in long side, and 14.3 in height. [Sam’s Club product listing](https://www.samsclub.com/ip/members-mark-heavy-duty-storage-tote-black-yellow/13605308660)
+
+Shelf clearances and support rim positions still need measurements from the actual totes and rack.
+
+## Cut list and rack dimensions
+
+The cut list displays inches in fractions to the nearest 1/8 in. Customer dimensions round up to the next whole inch when needed. The 3D view uses the unrounded cut lengths.
+
+- Upright lengths for one through five rows are 16.5, 32, 47.5, 63, and 79 in. The cut list counts one more upright than columns on each of the front and rear frames.
+- HDX and Sterilite use 20.25 in bays and 29 in rungs. Other brands use 21 in bays and 30 in rungs. The list counts two rungs per bay.
+- Four crossboards run the full width, calculated as the total bay width plus 1.5 in per upright across one face. Each crossboard gets an extra 1/4 in at three or four columns, or 3/8 in at five columns.
+- Height to the top crossboards is the upright length plus 3 in, plus 5.5 in when casters are enabled. The preview shows the top panel above the crossboards. Panel cuts and any panel contribution to the customer height are pending.
+- Customer depth is rung length plus a 1 in allowance for rear bracing. Rear bracing geometry and cuts are pending.
+
+The preview spaces the rungs evenly within the uprights and estimates the tote support-rim position. Measurements from the actual rack and tote rim can refine those details.

@@ -49,6 +49,18 @@ h1 { margin: 0; font: 500 clamp(2.35rem, 4.25vw, 4.25rem)/.98 Georgia, serif; le
 h2, legend { font-size: 1.02rem; line-height: 1.35; margin: 0; font-weight: 720; letter-spacing: -.02em; }
 .capacity { color: var(--accent); background: #e9eee4; padding: .27rem .5rem; font-size: .78rem; border-radius: .35rem; white-space: nowrap; }
 .stepper-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: .75rem; margin-top: .8rem; }
+.layout-help { margin: .7rem 0 0; font-size: .875rem; line-height: 1.4; color: var(--muted); }
+.tote-field { display: block; font-size: 1.02rem; font-weight: 720; letter-spacing: -.02em; }
+.tote-select {
+  appearance: none; width: 100%; margin-top: .55rem; min-height: 2.55rem;
+  padding: .5rem 2rem .5rem .7rem; border: 1px solid var(--line); border-radius: .5rem;
+  color: var(--ink); font: inherit; font-size: .875rem; background: #fff;
+  background-image: linear-gradient(45deg, transparent 50%, var(--accent) 50%),
+    linear-gradient(135deg, var(--accent) 50%, transparent 50%);
+  background-position: right 1rem center, right .7rem center;
+  background-size: .3rem .3rem; background-repeat: no-repeat;
+}
+.tote-select:focus-visible { outline: 2px solid #345635; outline-offset: 3px; }
 .field-label { display: block; color: var(--muted); font-size: .875rem; margin-bottom: .32rem; }
 .stepper { display: grid; grid-template-columns: 1fr .75fr 1fr; min-height: 2.4rem; border: 1px solid var(--line); border-radius: .5rem; align-items: stretch; text-align: center; background: #fff; }
 .stepper output { align-self: center; font-size: .95rem; font-weight: 650; font-variant-numeric: tabular-nums; }
@@ -80,6 +92,12 @@ input[role=switch]:checked::after { transform: translateX(1rem); }
 .dimension-grid dt { color: var(--muted); font-size: .78rem; }
 .dimension-grid dd { margin: .15rem 0 0; font-weight: 725; font-size: 1.16rem; font-variant-numeric: tabular-nums; }
 .dimension-grid small { font-size: .7rem; font-weight: 500; color: var(--muted); }
+.cut-list { margin-top: 1rem; padding: 1.05rem 1.15rem; }
+.cut-list table { width: 100%; border-collapse: collapse; margin-top: .65rem; font-size: .875rem; font-variant-numeric: tabular-nums; }
+.cut-list th, .cut-list td { padding: .55rem 0; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+.cut-list th:first-child { text-align: left; white-space: normal; padding-right: .6rem; }
+.cut-list thead { color: var(--muted); }
+.cut-list tbody th { font-weight: 600; }
 @media (max-width: 850px) {
   .viewer-footer { align-items: flex-end; }
   .viewer-button span { display: none; }

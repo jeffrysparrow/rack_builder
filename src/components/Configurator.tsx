@@ -1,7 +1,8 @@
 import { Component, lazy, Suspense, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { calculateRack, defaultConfiguration, finishes, estimatePrice } from '../config/rack';
+import { calculateRack, defaultConfiguration, finishes, estimatePrice, MAX_RACK_SIZE } from '../config/rack';
 import type { RackConfiguration } from '../config/rack';
+import { isToteType, toteProfiles } from '../config/totes';
 
 const Studio = lazy(() => import('../three/Studio').then(({ Studio }) => ({ default: Studio })));
 
@@ -32,7 +33,7 @@ function Stepper({ label, value, onChange }: { label: string; value: number; onC
     <div className="stepper" role="group" aria-label={label}>
       <button type="button" disabled={value === 1} aria-label={`Fewer ${label.toLowerCase()}`} onClick={() => onChange(-1)}>−</button>
       <output aria-label={label}>{value}</output>
-      <button type="button" disabled={value === 6} aria-label={`More ${label.toLowerCase()}`} onClick={() => onChange(1)}>+</button>
+      <button type="button" disabled={value >= MAX_RACK_SIZE} aria-label={`More ${label.toLowerCase()}`} onClick={() => onChange(1)}>+</button>
     </div>
   </div>;
 }
@@ -46,7 +47,13 @@ function Toggle({ label, description, checked, onChange }: {
   </label>;
 }
 
-function inches(meters: number) { return (meters / .0254).toFixed(1); }
+const eighthFractions = ['', '1/8', '1/4', '3/8', '1/2', '5/8', '3/4', '7/8'];
+
+function formatCutLength(inches: number) {
+  const eighths = Math.round(inches * 8);
+  const whole = Math.floor(eighths / 8);
+  return [whole || '', eighthFractions[eighths % 8]].filter(Boolean).join(' ') || '0';
+}
 
 export function Configurator() {
   const [config, setConfig] = useState(defaultConfiguration);
@@ -60,9 +67,8 @@ export function Configurator() {
   };
   const changeLayout = (axis: 'columns' | 'rows', delta: number) => {
     setConfig((current) => {
-      const size = Math.max(1, Math.min(6, current[axis] + delta));
-      if (axis === 'rows') return { ...current, rows: size };
-      return { ...current, columns: size, casterCount: size <= 2 ? 4 : size <= 4 ? 6 : 8 };
+      const size = Math.max(1, Math.min(MAX_RACK_SIZE, current[axis] + delta));
+      return { ...current, [axis]: size };
     });
   };
 
@@ -104,6 +110,18 @@ export function Configurator() {
               <Stepper label="Columns" value={config.columns} onChange={(delta) => changeLayout('columns', delta)} />
               <Stepper label="Rows" value={config.rows} onChange={(delta) => changeLayout('rows', delta)} />
             </div>
+            <p className="layout-help">Up to {MAX_RACK_SIZE} columns and {MAX_RACK_SIZE} rows per rack. For more width, place separate racks side by side on the floor.</p>
+          </section>
+          <section className="setting-section">
+            <label className="tote-field" htmlFor="tote-brand">Tote brand</label>
+            <select className="tote-select" id="tote-brand" value={config.binType} aria-describedby="tote-fit-help"
+              onChange={(event) => {
+                const value = event.currentTarget.value;
+                if (isToteType(value)) update('binType', value);
+              }}>
+              {Object.entries(toteProfiles).map(([id, profile]) => <option key={id} value={id}>{profile.label}</option>)}
+            </select>
+            <p className="layout-help" id="tote-fit-help">27-gallon tote. The selected brand sets the bay width and rung length.</p>
           </section>
           <section className="setting-section">
             <fieldset>
@@ -120,22 +138,35 @@ export function Configurator() {
           </section>
           <section className="setting-section accessories">
             <h2>Accessories</h2>
-            <Toggle label="Storage totes" description="Black 27-gallon totes with yellow lids" checked={config.includeBins}
+            <Toggle label="Storage totes" description="Show totes in the 3D preview" checked={config.includeBins}
               onChange={(value) => update('includeBins', value)} />
-            <Toggle label="Swivel casters" description={`${config.casterCount} orange wheels with brakes`} checked={config.includeCasters}
+            <Toggle label="Swivel casters" description={`${layout.casterCount} orange wheels with brakes`} checked={config.includeCasters}
               onChange={(value) => update('includeCasters', value)} />
           </section>
           <section className="setting-section dimensions">
-            <h2>Estimated overall size</h2>
+            <h2>Overall rack size</h2>
             <dl className="dimension-grid" aria-live="polite">
-              <div><dt>Width</dt><dd>{inches(layout.width)}<small> in</small></dd></div>
-              <div><dt>Height</dt><dd>{inches(layout.height)}<small> in</small></dd></div>
-              <div><dt>Depth</dt><dd>{inches(layout.depth)}<small> in</small></dd></div>
+              <div><dt>Width</dt><dd>{Math.ceil(layout.cuts.width)}<small> in</small></dd></div>
+              <div><dt>Height</dt><dd>{Math.ceil(layout.cuts.height)}<small> in</small></dd></div>
+              <div><dt>Depth</dt><dd>{Math.ceil(layout.cuts.depth)}<small> in</small></dd></div>
             </dl>
+            <p className="layout-help">Rounded up to whole inches. Depth includes 1 in for rear bracing. Height is measured to the top crossboards.</p>
             {price !== null && <p>Estimated price {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(price)}</p>}
           </section>
         </aside>
       </div>
+      <section className="settings cut-list" aria-labelledby="cut-list-heading">
+        <h2 id="cut-list-heading">2×4 cut list</h2>
+        <table aria-labelledby="cut-list-heading">
+          <thead><tr><th scope="col">Part</th><th scope="col">Quantity</th><th scope="col">Cut length</th></tr></thead>
+          <tbody>
+            {layout.cuts.pieces.map(({ name, quantity, length }) => (
+              <tr key={name}><th scope="row">{name}</th><td>{quantity}</td><td>{formatCutLength(length)} in</td></tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="layout-help">Top panel and rear bracing cuts are pending.</p>
+      </section>
     </main>
   </>;
 }

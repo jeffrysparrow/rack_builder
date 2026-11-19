@@ -1,6 +1,5 @@
 {
   "tote": { "width": 0.49784, "depth": 0.72390, "height": 0.38608, "railBelowTop": 0.044 },
   "caster": { "diameter": 0.100, "tread": 0.032, "height": 0.133, "plateWidth": 0.092, "plateDepth": 0.062 },
-  "lumber": { "thickness": 0.0381, "face": 0.0889, "topThickness": 0.019 },
-  "fit": { "sideClearance": 0.009, "verticalClearance": 0.026, "depth": 0.705, "topOverhang": 0.009 }
+  "lumber": { "face": 0.0889, "topThickness": 0.019 }
 }

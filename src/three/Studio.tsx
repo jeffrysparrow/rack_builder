@@ -3,82 +3,77 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Environment, Lightformer, OrbitControls } from '@react-three/drei';
 import { CanvasTexture, MathUtils, PerspectiveCamera, Vector3 } from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
-import { calculateRack } from '../config/rack';
+import { calculateRack, defaultConfiguration, MAX_RACK_SIZE } from '../config/rack';
 import { WoodBoard } from './WoodBoard';
 import { CasterWheel, StorageBin } from './Hardware';
 
 type Layout = ReturnType<typeof calculateRack>;
+
 const neutral = '#e9e9e3';
 const home = new Vector3(.64, .34, 1).normalize();
+const largestRack = calculateRack({ ...defaultConfiguration, columns: MAX_RACK_SIZE, rows: MAX_RACK_SIZE });
+const shadowSpan = Math.max(largestRack.width, largestRack.height) * 1.18;
 
 function Framing({ layout, reset, spin }: { layout: Layout; reset: number; spin: boolean }) {
   const controls = useRef<OrbitControlsImpl>(null);
-  const started = useRef(false);
   const offset = useMemo(() => new Vector3(), []);
   const target = useMemo(() => new Vector3(), []);
-  const previously = useRef({ reset: -1, distance: 0 });
-  const motion = useRef({ distance: 0, azimuth: 0, polar: 0, angle: false, active: false });
+  const previousDistance = useRef(0);
+  const previousReset = useRef(reset);
+  const resetting = useRef(false);
   const { camera, size } = useThree();
   const aspect = size.width / Math.max(1, size.height);
-  const distance = Math.max(layout.height / .68, Math.hypot(layout.width, layout.depth) / (.67 * aspect))
-    * 1.56 + layout.depth * .28;
 
   useFrame((_, dt) => {
     const orbit = controls.current;
     if (!orbit) return;
-    const moving = motion.current;
-    if (previously.current.reset !== reset || previously.current.distance !== distance) {
-      const resetAngle = previously.current.reset !== reset;
-      const currentDistance = camera.position.distanceTo(orbit.target);
-      const ratio = started.current ? currentDistance / (previously.current.distance || distance) : 1;
-      moving.distance = distance * (resetAngle ? 1 : MathUtils.clamp(ratio, .72, 1.35));
-      moving.azimuth = Math.atan2(home.x, home.z);
-      moving.polar = Math.acos(home.y);
-      moving.angle = resetAngle;
-      moving.active = true;
-      previously.current = { reset, distance };
-    }
+    const { width, height, depth } = layout;
+    const distance = Math.max(height / .68, Math.hypot(width, depth) / (.67 * aspect))
+      * 1.56 + depth * .28;
+    orbit.minDistance = distance * .34;
+    orbit.maxDistance = distance * 2.6;
+    target.set(0, height * .49, 0);
 
-    target.set(0, layout.height * .49, layout.centerZ);
-    if (!started.current) {
-      orbit.target.copy(target);
+    if (!previousDistance.current) {
       camera.position.copy(home).multiplyScalar(distance).add(target);
-      orbit.update();
-      started.current = true;
+    } else {
+      offset.copy(camera.position).sub(orbit.target);
+      const length = offset.length() * distance / previousDistance.current;
+      if (previousReset.current !== reset) resetting.current = true;
+      if (resetting.current) {
+        const azimuth = Math.atan2(offset.x, offset.z);
+        const polar = Math.acos(MathUtils.clamp(offset.y / offset.length(), -1, 1));
+        const angle = Math.atan2(home.x, home.z) - azimuth;
+        const turn = Math.atan2(Math.sin(angle), Math.cos(angle));
+        const nextDistance = MathUtils.damp(length, distance, 11, dt);
+        offset.setFromSphericalCoords(nextDistance, MathUtils.damp(polar, Math.acos(home.y), 11, dt),
+          azimuth + MathUtils.damp(0, turn, 11, dt));
+        if (Math.abs(turn) + Math.abs(polar - Math.acos(home.y)) + Math.abs(length - distance) < .004) {
+          resetting.current = false;
+          offset.copy(home).multiplyScalar(distance);
+        }
+      } else {
+        offset.setLength(length);
+      }
+      camera.position.copy(offset).add(target);
     }
-    if (!moving.active) return;
-
-    offset.copy(camera.position).sub(orbit.target);
-    let azimuth = Math.atan2(offset.x, offset.z);
-    let polar = Math.acos(MathUtils.clamp(offset.y / offset.length(), -1, 1));
-    const length = MathUtils.damp(offset.length(), moving.distance, 7, dt);
-    if (moving.angle) {
-      const turn = Math.atan2(Math.sin(moving.azimuth - azimuth), Math.cos(moving.azimuth - azimuth));
-      azimuth += MathUtils.damp(0, turn, 8, dt);
-      polar = MathUtils.damp(polar, moving.polar, 8, dt);
-      if (Math.abs(turn) + Math.abs(polar - moving.polar) < .004) moving.angle = false;
-    }
-    orbit.target.lerp(target, 1 - Math.exp(-7 * dt));
-    camera.position.copy(offset.setFromSphericalCoords(length, polar, azimuth)).add(orbit.target);
-    if (Math.abs(length - moving.distance) < .003 && orbit.target.distanceTo(target) < .003 && !moving.angle) {
-      moving.active = false;
-    }
+    previousDistance.current = distance;
+    previousReset.current = reset;
+    orbit.target.copy(target);
+    camera.lookAt(target);
   });
 
   return <OrbitControls ref={controls} makeDefault enablePan={false} enableDamping dampingFactor={.11}
-    minDistance={distance * .34} maxDistance={distance * 2.6} minPolarAngle={.16} maxPolarAngle={Math.PI / 2 + .15}
-    autoRotate={spin} autoRotateSpeed={.72} onStart={() => { motion.current.active = false; }} />;
+    minPolarAngle={.16} maxPolarAngle={Math.PI / 2 + .15}
+    autoRotate={spin} autoRotateSpeed={.72} onStart={() => { resetting.current = false; }} />;
 }
 
 function RackFrame({ layout }: { layout: Layout }) {
-  const mounted = useRef(false);
-  useEffect(() => { mounted.current = true; }, []);
   return <>
-    {layout.boards.map((board) => <WoodBoard key={board.id} spec={board}
-      animate={mounted.current} />)}
+    {layout.boards.map((board) => <WoodBoard key={board.id} spec={board} />)}
     <Suspense fallback={null}>
-      <StorageBin placements={layout.bins} animate={mounted.current} />
-      <CasterWheel placements={layout.casters} animate={mounted.current} />
+      <StorageBin placements={layout.bins} scale={layout.toteScale} />
+      <CasterWheel placements={layout.casters} scale={layout.casterScale} />
     </Suspense>
   </>;
 }
@@ -98,14 +93,14 @@ function FloorContact({ layout }: { layout: Layout }) {
   }, []);
   useEffect(() => () => texture.dispose(), [texture]);
 
-  return <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -.001, 0]}>
-    <planeGeometry args={[layout.width + .85, layout.depth + .72]} />
+  return <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -.001, 0]}
+    scale={[layout.width + .85, layout.depth + .72, 1]}>
+    <planeGeometry />
     <meshBasicMaterial map={texture} transparent depthWrite={false} toneMapped={false} />
   </mesh>;
 }
 
 function StudioScene({ layout, reset, spin }: { layout: Layout; reset: number; spin: boolean }) {
-  const shadowSpan = Math.max(layout.width, layout.height) * 1.18;
   const camera = useThree(({ camera }) => camera) as PerspectiveCamera;
   useEffect(() => {
     camera.near = .05;
