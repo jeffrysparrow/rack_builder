@@ -1,22 +1,25 @@
 # Rack Builder
 
-A local React and TypeScript prototype for configuring a wooden garage rack for 27-gallon storage totes.
+A React and TypeScript storefront for configuring wooden tote racks, with a Cloudflare Worker and D1 database for shop settings, delivery, and orders.
 
 ## Run locally
 
-Use Node.js 20 or newer.
+Use Node.js 22 or newer.
 
 ```sh
 npm ci
+npm run db:local
+npm run build
+npm run dev:worker
+```
+
+Open **http://127.0.0.1:8787/**. Open **/admin** and enter your local development token to manage the shop. Drag the model to orbit and scroll or pinch to zoom. On narrow screens, the rack configuration is below the preview.
+
+```sh
 npm run dev
 ```
 
-Open the local URL printed by Vite. Drag the model to orbit and scroll or pinch to zoom. On narrow screens, the rack configuration is below the preview.
-
-```sh
-npm run build
-npm run preview
-```
+For frontend hot reload, run the Vite command in a second terminal while the Worker is running. Vite proxies API requests to the Worker.
 
 ## Project structure
 
@@ -71,8 +74,35 @@ The estimate uses $20 per slot, $60 for standard plywood, $90 for premium plywoo
 
 Totes appear in the preview by default. The separate delivery add-on starts off. When selected, it includes one Greenmade Costco tote per slot at $15 each and sizes the rack for Greenmade. Turning it off restores the customer’s previous tote brand.
 
-### Address-based delivery quotes
+### Modular orders and consultations
 
-Set `DELIVERY_ORIGIN` and a Google Routes API key as `GOOGLE_MAPS_API_KEY` in an ignored `.env.local` file, then restart Vite. Both settings are server-only. Development and local preview expose `POST /api/delivery-quote`. A production deployment must mount the same endpoint on its server or serverless platform. Static assets alone cannot calculate delivery quotes.
+Each rack in an order can be edited separately. Adding a rack copies the current rack as a starting point. Pricing, tote capacity, and cut counts cover the whole order. The 3D preview shows the selected rack. Consultations are saved in Builder admin, and the Worker sends them to the shop notification email when Resend is configured.
 
-The endpoint sends the route origin and destination street, city, state, and ZIP code to Google Routes. Apartment details and delivery notes stay in the current page. The endpoint returns only the computed fee. The first 15 one-way road miles are free, then the rate is $2 per additional mile, with the total fee rounded to the nearest dollar.
+## Platform setup
+
+See the [platform plan](docs/platform-plan.md) for the pilot and multi-builder architecture. `npm run build:storefront` is available for a standalone configurator preview. Use **`npm run build`** with the Worker for the full platform.
+
+### Local settings
+
+Keep provider secrets in the ignored `.env.local`. Wrangler loads that file in local development when `.dev.vars` is absent. Set `LOCAL_ADMIN_TOKEN` to a random value and use the same value in the local admin prompt. The local login only applies to loopback hosts. Add the following settings for the flows you want to exercise.
+
+| Setting | Purpose |
+| --- | --- |
+| `GOOGLE_MAPS_API_KEY` | Google Routes key. Use an API restriction for Routes. |
+| `DELIVERY_ORIGIN` | Initial routing address for ToteWorks ATX. Editable in Builder admin and excluded from public responses. |
+| `QUOTE_SIGNING_SECRET` | Random signing key for short-lived, address-bound route quotes. Generate one with `openssl rand -hex 32`. |
+| `RESEND_API_KEY`, `CONSULT_FROM_EMAIL` | Resend API key and verified sender for inquiries and order notifications. |
+| `CONSULT_TO_EMAIL` | Initial ToteWorks ATX recipient. Builder admin can change the recipient. |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Stripe test credentials for checkout and webhook verification. Local forwarding can use the Stripe CLI. |
+
+Create at least three future delivery windows in **Builder admin → Delivery**. Windows use the shop’s local time. Customers can rank three distinct windows, and an order request saves the current price and cut list. Confirming a window reserves it and counts it against the shop’s Monday-through-Sunday order capacity. Confirmation sends a payment link when Stripe is configured. A failed email can be retried from Builder admin. A verified Stripe webhook records the payment.
+
+### Production setup
+
+1. Use Wrangler authenticated to the Cloudflare account that owns `toteworks-atx`. The production D1 database is already bound in `wrangler.jsonc`. Apply pending migrations with `npx wrangler@4 d1 migrations apply DB --remote` before deploying Worker changes that depend on them.
+2. In Cloudflare Access, add `/admin` and `/api/admin` as two public hostname paths on the same self-hosted application. Set an allow policy for the owner. Configure `ACCESS_ISSUER` as the HTTPS Access team domain, `ACCESS_AUDIENCE` as the application’s AUD tag, and `SHOP_OWNER_EMAIL` as the permitted email. The Worker also verifies Access tokens and shop membership. For an additional shop, add the owner to `shop_members` for that shop. `LOCAL_ADMIN_TOKEN` is for the local Worker.
+3. Add the route and Resend settings above as Worker secrets using `npx wrangler@4 secret put <name>` or the dashboard. Add your Resend sender domain’s verification records in DNS. A real consult submission and a confirmation email should reach the intended recipients before launch.
+4. Add Stripe in test mode. Register `https://toteworksatx.com/api/stripe/webhook` for `checkout.session.completed`. Use the endpoint signing secret and a matching test-mode Stripe key. Verify one order in Stripe test mode. Confirm the tax handling for the shop before enabling live charges. Checkout currently uses the saved rack and delivery total without automated tax calculation.
+5. Run `npm run build` and `npx wrangler@4 deploy`. For Cloudflare Git builds use `npm run build` as the build command and `npx wrangler@4 deploy` as the deploy command. Keep the existing custom domain on the Worker. Add real delivery windows after deployment.
+
+[Cloudflare D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/) · [Cloudflare Access JWT validation](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/) · [Resend domains](https://resend.com/docs/dashboard/domains/introduction) · [Stripe test webhook forwarding](https://docs.stripe.com/webhooks#test-webhook)

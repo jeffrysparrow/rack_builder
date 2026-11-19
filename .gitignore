@@ -10,3 +10,8 @@ __pycache__/
 /.env
 /.env.*
 !/.env.example
+
+# Cloudflare local files and credentials
+/.wrangler/
+/.dev.vars
+/.dev.vars.*

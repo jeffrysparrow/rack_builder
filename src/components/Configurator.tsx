@@ -1,11 +1,14 @@
-import { Component, lazy, Suspense, useMemo, useState } from 'react';
+import { Component, lazy, Suspense, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { DeliveryDetails } from './DeliveryDetails';
-import { calculateRack, defaultConfiguration, finishes, getRackToteType, MAX_RACK_SIZE } from '../config/rack';
+import { CustomerReviews, hasMarketplaceReviews, StorefrontDetails } from './StorefrontDetails';
+import { calculateRack, defaultConfiguration, finishes, formatCutLength, getRackToteType } from '../config/rack';
 import type { RackConfiguration } from '../config/rack';
-import { estimatePrice, rackRates } from '../config/pricing';
+import { estimateOrderPrice, estimatePrice } from '../config/pricing';
 import { deliveryToteBrand, isToteType, toteProfiles } from '../config/totes';
 
+import { MAX_ORDER_RACKS } from '../config/shop';
+import type { Storefront } from '../config/shop';
 const Studio = lazy(() => import('../three/Studio').then(({ Studio }) => ({ default: Studio })));
 
 class ViewerBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
@@ -32,15 +35,15 @@ function Icon({ name }: { name: 'rack' | 'orbit' | 'reset' | 'mouse' | 'delivery
 
 const minimumRackSize = { columns: 2, rows: 1 };
 
-function Stepper({ label, value, minimum, onChange }: {
-  label: string; value: number; minimum: number; onChange: (delta: number) => void;
+function Stepper({ label, value, minimum, maximum, onChange }: {
+  label: string; value: number; minimum: number; maximum?: number; onChange: (delta: number) => void;
 }) {
   return <div className="stepper-field">
     <span className="field-label">{label}</span>
     <div className="stepper" role="group" aria-label={label}>
       <button type="button" disabled={value <= minimum} aria-label={`Fewer ${label.toLowerCase()}`} onClick={() => onChange(-1)}>−</button>
       <output aria-label={label}>{value}</output>
-      <button type="button" disabled={value >= MAX_RACK_SIZE} aria-label={`More ${label.toLowerCase()}`} onClick={() => onChange(1)}>+</button>
+      <button type="button" disabled={maximum !== undefined && value >= maximum} aria-label={`More ${label.toLowerCase()}`} onClick={() => onChange(1)}>+</button>
     </div>
   </div>;
 }
@@ -55,61 +58,121 @@ function Toggle({ label, description, checked, onChange }: {
 }
 
 const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
-const eighthFractions = ['', '1/8', '1/4', '3/8', '1/2', '5/8', '3/4', '7/8'];
-
-function formatCutLength(inches: number) {
-  const eighths = Math.round(inches * 8);
-  const whole = Math.floor(eighths / 8);
-  return [whole || '', eighthFractions[eighths % 8]].filter(Boolean).join(' ') || '0';
+function combineCuts(layouts: ReturnType<typeof calculateRack>[]) {
+  const parts = new Map<string, Map<number, number>>();
+  for (const layout of layouts) {
+    for (const { name, length, quantity } of layout.cuts.pieces) {
+      const lengths = parts.get(name) ?? new Map<number, number>();
+      lengths.set(length, (lengths.get(length) ?? 0) + quantity);
+      parts.set(name, lengths);
+    }
+  }
+  return Array.from(parts).flatMap(([name, lengths]) =>
+    Array.from(lengths, ([length, quantity]) => ({ name, length, quantity })));
 }
 
-export function Configurator() {
-  const [config, setConfig] = useState(defaultConfiguration);
+export function Configurator({ shop }: { shop: Storefront }) {
+  const { settings, revision, deliveryAvailable, consultAvailable } = shop;
+  const { rates, build } = settings;
+  const [{ racks, activeIndex }, setOrder] = useState({
+    racks: [{ ...defaultConfiguration, columns: Math.min(defaultConfiguration.columns, build.maxColumns), rows: Math.min(defaultConfiguration.rows, build.maxRows) }],
+    activeIndex: 0,
+  });
+  const config = racks[activeIndex];
   const [spin, setSpin] = useState(false);
   const [reset, setReset] = useState(0);
-  const layout = useMemo(() => calculateRack(config), [config]);
-  const price = estimatePrice(config);
+  const [zoom, setZoom] = useState(0);
+  const [copyStatus, setCopyStatus] = useState('');
+  const deliveryDialog = useRef<HTMLDialogElement>(null);
+  const openDelivery = () => deliveryDialog.current?.showModal();
+  const layouts = useMemo(() => racks.map((rack) => calculateRack(rack, build)), [racks, build]);
+  const layout = layouts[activeIndex];
+  const price = estimateOrderPrice(racks, rates, build);
   const capacity = config.columns * config.rows;
+  const orderCapacity = racks.reduce((count, rack) => count + rack.columns * rack.rows, 0);
+  const sideBySideWidth = layouts.reduce((width, rack) => width + rack.cuts.width, 0);
+  const cuts = useMemo(() => combineCuts(layouts), [layouts]);
+  const multiple = racks.length > 1;
+  const updateRack = (change: (current: RackConfiguration) => RackConfiguration) => {
+    setOrder((order) => ({
+      ...order,
+      racks: order.racks.map((rack, index) => index === order.activeIndex ? change(rack) : rack),
+    }));
+  };
   const update = <Key extends keyof RackConfiguration>(key: Key, value: RackConfiguration[Key]) => {
-    setConfig((current) => ({ ...current, [key]: value }));
+    updateRack((rack) => ({ ...rack, [key]: value }));
   };
   const changeLayout = (axis: 'columns' | 'rows', delta: number) => {
-    setConfig((current) => {
-      const size = Math.max(minimumRackSize[axis], Math.min(MAX_RACK_SIZE, current[axis] + delta));
-      return { ...current, [axis]: size };
-    });
+    updateRack((rack) => ({
+      ...rack,
+      [axis]: Math.max(minimumRackSize[axis], Math.min(axis === 'columns' ? build.maxColumns : build.maxRows, rack[axis] + delta)),
+    }));
   };
+  const addRack = () => setOrder((order) => ({
+    racks: [...order.racks, { ...order.racks[order.activeIndex] }],
+    activeIndex: order.racks.length,
+  }));
+  const removeRack = () => setOrder((order) => {
+    if (order.racks.length === 1) return order;
+    const racks = order.racks.filter((_, index) => index !== order.activeIndex);
+    return { racks, activeIndex: Math.min(order.activeIndex, racks.length - 1) };
+  });
+
+  async function copyEstimate() {
+    try {
+      const lines = racks.map((rack, index) => {
+        const top = finishes.find(({ id }) => id === rack.topMaterial)?.label;
+        return `Rack ${index + 1}: ${rack.columns} wide × ${rack.rows} high · ${toteProfiles[getRackToteType(rack)].label} · ${top} · ${rack.includeCasters ? 'Casters' : 'No casters'} · ${rack.includeTotesWithDelivery ? 'Totes included' : 'Rack only'} · ${dollars.format(estimatePrice(rack, rates, build).total)}`;
+      });
+      await navigator.clipboard.writeText([settings.name + ' rack estimate', ...lines,
+        `Rack & accessories total: ${dollars.format(price.total)} before delivery`].join('\n'));
+      setCopyStatus('Rack estimate copied.');
+    } catch {
+      setCopyStatus('Couldn’t copy the estimate. You can share a screenshot of your order.');
+    }
+  }
 
   return <>
     <header className="site-header">
-      <div className="identity"><span className="brand-icon"><Icon name="rack" /></span><span>Rack Builder</span></div>
-      <span className="header-label">Garage storage configurator</span>
+      <a className="identity" href="#product"><span className="brand-icon"><Icon name="rack" /></span><span>{settings.name}</span></a>
+      <nav className="site-nav" aria-label="Main navigation">
+        <a href="#configure">Configure</a>
+        {hasMarketplaceReviews && <a href="#reviews">Reviews</a>}
+        {consultAvailable && <a href="#consult">Custom requests</a>}
+        {deliveryAvailable && <button type="button" className="nav-delivery" onClick={openDelivery}>Delivery</button>}
+      </nav>
     </header>
-    <main className="workspace">
+    <main className="workspace" id="product">
       <div className="page-intro">
         <div className="intro-copy">
-          <h1>Wooden tote rack</h1>
-          <p>Set your layout, customize the rack, and inspect it in 3D.</p>
+          <h1>{settings.title}</h1>
+          <p>{settings.description}</p>
         </div>
         <div className="delivery-banner">
           <span className="delivery-icon"><Icon name="delivery" /></span>
-          <span><strong>Free local delivery</strong><span>First 15 road miles free, then $2 per extra mile</span></span>
+          <span><strong>{settings.delivery.freeMiles > 0 ? 'Free local delivery' : 'Delivery available'}</strong>
+            <span>{settings.delivery.freeMiles > 0 && `First ${settings.delivery.freeMiles} road miles free, then `}
+              {settings.delivery.extraMileRate.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 })} per {settings.delivery.freeMiles > 0 ? 'extra ' : 'road '}mile</span></span>
         </div>
       </div>
-      <div className="builder">
+      <div className="builder" id="configure">
         <section className="viewer" aria-label="Interactive rack preview">
           <div className="studio">
             <ViewerBoundary><Suspense fallback={<p className="viewer-error">Loading 3D preview…</p>}>
-              <Studio layout={layout} spin={spin} reset={reset} />
+              <Studio layout={layout} spin={spin} reset={reset} zoom={zoom} />
             </Suspense></ViewerBoundary>
           </div>
           <div className="viewer-heading">
             <span className="viewer-label">3D preview</span>
-            <span className="viewer-size">{config.columns} × {config.rows} rack</span>
+            <span className="viewer-size">{config.columns} × {config.rows} rack{multiple && ` · Rack ${activeIndex + 1} of ${racks.length}`}</span>
           </div>
           <div className="viewer-footer">
-            <span className="viewer-help"><Icon name="mouse" /><span className="desktop-help">Drag to rotate · Scroll to zoom</span><span className="touch-help">Drag to rotate · Pinch to zoom</span></span>
+            <span className="viewer-help"><Icon name="mouse" /><span>Drag to rotate</span></span>
             <div className="viewer-actions">
+              <button className="viewer-button zoom-button" type="button" aria-label="Zoom out" title="Zoom out"
+                onClick={() => setZoom((step) => step - 1)}>−</button>
+              <button className="viewer-button zoom-button" type="button" aria-label="Zoom in" title="Zoom in"
+                onClick={() => setZoom((step) => step + 1)}>+</button>
               <button className="viewer-button" type="button" aria-label="Auto-rotate" aria-pressed={spin} title="Auto-rotate"
                 onClick={() => setSpin((active) => !active)}><Icon name="orbit" /><span>Auto-rotate</span></button>
               <button className="viewer-button" type="button" aria-label="Reset camera" title="Reset camera"
@@ -118,12 +181,32 @@ export function Configurator() {
           </div>
         </section>
         <aside className="settings" aria-label="Rack configuration">
-          <section className="setting-section">
-            <div className="section-heading"><h2>Rack layout</h2><span className="capacity">{capacity} tote {capacity === 1 ? 'space' : 'spaces'}</span></div>
-            <div className="stepper-grid">
-              <Stepper label="Columns" value={config.columns} minimum={minimumRackSize.columns} onChange={(delta) => changeLayout('columns', delta)} />
-              <Stepper label="Rows" value={config.rows} minimum={minimumRackSize.rows} onChange={(delta) => changeLayout('rows', delta)} />
+          <section className="setting-section rack-order" aria-labelledby="rack-order-heading">
+            <div className="section-heading">
+              <h2 id="rack-order-heading">Racks in your order</h2>
+              <span className="capacity">{orderCapacity} tote spaces</span>
             </div>
+            <ul className="rack-options">
+              {racks.map((rack, index) => <li key={index}>
+                <button type="button" aria-pressed={index === activeIndex}
+                  onClick={() => setOrder((order) => ({ ...order, activeIndex: index }))}>
+                  <span><strong>Rack {index + 1}</strong><small>{rack.columns} wide × {rack.rows} high</small></span>
+                  <strong>{dollars.format(estimatePrice(rack, rates, build).total)}</strong>
+                </button>
+              </li>)}
+            </ul>
+            <div className="rack-order-actions">
+              <button type="button" className="rack-add" disabled={racks.length >= MAX_ORDER_RACKS} onClick={addRack}>Add another rack</button>
+              {multiple && <button type="button" className="rack-remove" onClick={removeRack}>Remove rack {activeIndex + 1}</button>}
+            </div>
+          </section>
+          <section className="setting-section">
+            <div className="section-heading"><h2>{multiple ? `Configure rack ${activeIndex + 1}` : 'Build your rack'}</h2><span className="capacity">{capacity} tote {capacity === 1 ? 'space' : 'spaces'}</span></div>
+            <div className="stepper-grid">
+              <Stepper label="Columns" value={config.columns} minimum={minimumRackSize.columns} maximum={build.maxColumns} onChange={(delta) => changeLayout('columns', delta)} />
+              <Stepper label="Rows" value={config.rows} minimum={minimumRackSize.rows} maximum={build.maxRows} onChange={(delta) => changeLayout('rows', delta)} />
+            </div>
+            {consultAvailable && <a className="config-consult text-link" href="#consult">Need a custom size or tote fit?</a>}
           </section>
           <section className="setting-section">
             <label className="tote-field" htmlFor="tote-brand">Tote brand</label>
@@ -138,7 +221,7 @@ export function Configurator() {
             <p className="layout-help" id="tote-fit-help">
               {config.includeTotesWithDelivery
                 ? `This rack is sized for the ${deliveryToteBrand} totes included with delivery.`
-                : 'Choose the 27-gallon tote brand you plan to use so we can size your rack.'}
+                : 'Choose your tote brand for a rack sized to fit.'}
             </p>
             <Toggle label="Show totes in preview" description="Display setting only" checked={config.includeBins}
               onChange={(value) => update('includeBins', value)} />
@@ -161,46 +244,55 @@ export function Configurator() {
           </section>
           <section className="setting-section accessories">
             <h2>Accessories</h2>
-            <Toggle label="Swivel casters" description={`${layout.casterCount} wheels · ${dollars.format(rackRates.caster)} each`}
+            <Toggle label="Swivel casters" description={`${layout.casterCount} wheels · ${dollars.format(rates.caster)} each`}
               checked={config.includeCasters} onChange={(value) => update('includeCasters', value)} />
-            <Toggle label="Add totes with delivery" description={`${capacity} ${deliveryToteBrand} totes · ${dollars.format(rackRates.tote)} each`}
+            <Toggle label="Add totes with delivery" description={`${capacity} ${deliveryToteBrand} totes · ${dollars.format(rates.tote)} each`}
               checked={config.includeTotesWithDelivery} onChange={(value) => update('includeTotesWithDelivery', value)} />
           </section>
           <section className="setting-section dimensions">
-            <h2>Overall rack size</h2>
+            <h2>{multiple ? `Rack ${activeIndex + 1} size` : 'Overall rack size'}</h2>
             <dl className="dimension-grid" aria-live="polite">
               <div><dt>Width</dt><dd>{Math.ceil(layout.cuts.width)}<small> in</small></dd></div>
               <div><dt>Height</dt><dd>{Math.ceil(layout.cuts.height)}<small> in</small></dd></div>
               <div><dt>Depth</dt><dd>{Math.ceil(layout.cuts.depth)}<small> in</small></dd></div>
             </dl>
+            {multiple && <p className="layout-help"><strong>{Math.ceil(sideBySideWidth)} in wide</strong> with all {racks.length} racks side by side.</p>}
             <p className="layout-help">Rounded up to whole inches. Depth includes 1 in for rear bracing.</p>
           </section>
           <section className="setting-section pricing" aria-labelledby="pricing-heading">
-            <h2 id="pricing-heading">Price breakdown</h2>
+            <h2 id="pricing-heading">{multiple ? 'Order price breakdown' : 'Price breakdown'}</h2>
             <dl className="price-lines">
-              <div><dt>Rack frame · {capacity} {capacity === 1 ? 'slot' : 'slots'}</dt><dd>{dollars.format(price.frame)}</dd></div>
+              <div><dt>Rack frame · {orderCapacity} {orderCapacity === 1 ? 'slot' : 'slots'}</dt><dd>{dollars.format(price.frame)}</dd></div>
               {price.top > 0 && <div><dt>Top panel</dt><dd>{dollars.format(price.top)}</dd></div>}
               {price.wheelQuantity > 0 && <div><dt>Casters · {price.wheelQuantity}</dt><dd>{dollars.format(price.wheels)}</dd></div>}
               {price.toteQuantity > 0 && <div><dt>Storage totes · {price.toteQuantity}</dt><dd>{dollars.format(price.totes)}</dd></div>}
               <div className="price-total"><dt>Rack &amp; accessories total</dt><dd aria-live="polite">{dollars.format(price.total)}</dd></div>
             </dl>
-            <a className="delivery-next" href="#delivery-details">Continue to delivery</a>
+            {!deliveryAvailable ? <>
+              <button type="button" className="delivery-next" onClick={copyEstimate}>Copy rack estimate</button>
+              <p className="layout-help">Delivery is quoted separately.</p>
+              {copyStatus && <p className="layout-help" role="status">{copyStatus}</p>}
+            </> : <button type="button" className="delivery-next" onClick={openDelivery}>Get a delivery estimate</button>}
           </section>
         </aside>
       </div>
-      <DeliveryDetails rackTotal={price.total} />
-      <section className="settings cut-list" aria-labelledby="cut-list-heading">
-        <h2 id="cut-list-heading">2×4 cut list</h2>
+      {deliveryAvailable && <dialog className="delivery-dialog" ref={deliveryDialog} aria-labelledby="delivery-heading">
+        <button type="button" className="delivery-close" onClick={() => deliveryDialog.current?.close()}>Close</button>
+        <DeliveryDetails rackTotal={price.total} racks={racks} timezone={settings.timezone} revision={revision} schedulingAvailable={consultAvailable} />
+      </dialog>}
+      {consultAvailable ? <StorefrontDetails racks={racks} /> : <CustomerReviews />}
+      {import.meta.env.MODE === 'storefront' && <details className="settings cut-list">
+        <summary id="cut-list-heading">2×4 cut list{multiple && ` · all ${racks.length} racks`}</summary>
         <table aria-labelledby="cut-list-heading">
           <thead><tr><th scope="col">Part</th><th scope="col">Quantity</th><th scope="col">Cut length</th></tr></thead>
           <tbody>
-            {layout.cuts.pieces.map(({ name, quantity, length }) => (
-              <tr key={name}><th scope="row">{name}</th><td>{quantity}</td><td>{formatCutLength(length)} in</td></tr>
+            {cuts.map(({ name, quantity, length }) => (
+              <tr key={`${name}-${length}`}><th scope="row">{name}</th><td>{quantity}</td><td>{formatCutLength(length)} in</td></tr>
             ))}
           </tbody>
         </table>
         <p className="layout-help">Top panel and rear bracing cuts are pending.</p>
-      </section>
+      </details>}
     </main>
   </>;
 }

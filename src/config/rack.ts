@@ -42,24 +42,43 @@ export interface BoardSpec {
 export interface PartPlacement { id: string; position: Point; yaw?: number }
 
 const INCH = .0254;
-const uprightLengths = [16.5, 32, 47.5, 63, 79];
+export const defaultBuildRules = {
+  maxColumns: MAX_RACK_SIZE,
+  maxRows: MAX_RACK_SIZE,
+  narrowBay: 20.25,
+  wideBay: 21,
+  narrowRung: 29,
+  wideRung: 30,
+  uprights: [16.5, 32, 47.5, 63, 79],
+  casterLift: 5.5,
+  sixWheelColumns: 4,
+};
+export type BuildRules = typeof defaultBuildRules;
+
 const boardThickness = 1.5;
-const casterLift = 5.5;
 
 export function getRackToteType(config: RackConfiguration): ToteType {
   return config.includeTotesWithDelivery ? deliveryToteType : config.binType;
 }
 
-export function calculateCutList(config: RackConfiguration) {
+const eighthFractions = ['', '1/8', '1/4', '3/8', '1/2', '5/8', '3/4', '7/8'];
+
+export function formatCutLength(inches: number) {
+  const eighths = Math.round(inches * 8);
+  const whole = Math.floor(eighths / 8);
+  return [whole || '', eighthFractions[eighths % 8]].filter(Boolean).join(' ') || '0';
+}
+
+export function calculateCutList(config: RackConfiguration, rules = defaultBuildRules) {
   const { columns, rows, includeCasters } = config;
   const binType = getRackToteType(config);
   const narrow = binType === 'hdx-27' || binType === 'sterilite-27';
-  const bayWidth = narrow ? 20.25 : 21;
-  const rungLength = narrow ? 29 : 30;
-  const uprightLength = uprightLengths[rows - 1];
+  const bayWidth = narrow ? rules.narrowBay : rules.wideBay;
+  const rungLength = narrow ? rules.narrowRung : rules.wideRung;
+  const uprightLength = rules.uprights[rows - 1];
   const widthAllowance = columns === 5 ? 3 / 8 : columns >= 3 ? 1 / 4 : 0;
   const width = columns * bayWidth + (columns + 1) * boardThickness + widthAllowance;
-  const lift = includeCasters ? casterLift : 0;
+  const lift = includeCasters ? rules.casterLift : 0;
   const frameHeight = uprightLength + 2 * boardThickness + lift;
   const panelHeight = config.topMaterial === 'none' ? 0 : measurements.lumber.topThickness / INCH;
 
@@ -75,25 +94,25 @@ export function calculateCutList(config: RackConfiguration) {
   };
 }
 
-export function getCasterCount(columns: number) {
-  return columns >= 4 ? 6 : 4;
+export function getCasterCount(columns: number, rules = defaultBuildRules) {
+  return columns >= rules.sixWheelColumns ? 6 : 4;
 }
 
-export function calculateRack(config: RackConfiguration) {
-  const cuts = calculateCutList(config);
+export function calculateRack(config: RackConfiguration, rules = defaultBuildRules) {
+  const cuts = calculateCutList(config, rules);
   const { tote: referenceTote, caster, lumber } = measurements;
   const tote = toteProfiles[getRackToteType(config)].dimensions;
   const toteScale: Point = [
     tote.width / referenceTote.width, tote.height / referenceTote.height, tote.depth / referenceTote.depth,
   ];
-  const casterScale: Point = [1, casterLift * INCH / caster.height, 1];
+  const casterScale: Point = [1, rules.casterLift * INCH / caster.height, 1];
   const { face, topThickness } = lumber;
   const thickness = boardThickness * INCH;
   const width = cuts.width * INCH;
   const pitch = (width - thickness) / config.columns;
   const opening = pitch - thickness;
   const lift = cuts.lift * INCH;
-  const casterCount = getCasterCount(config.columns);
+  const casterCount = getCasterCount(config.columns, rules);
   const uprightHeight = cuts.uprightLength * INCH;
   const rowPitch = uprightHeight / config.rows;
   const topY = cuts.frameHeight * INCH;

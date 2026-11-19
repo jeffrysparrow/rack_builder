@@ -14,12 +14,13 @@ const home = new Vector3(.64, .34, 1).normalize();
 const largestRack = calculateRack({ ...defaultConfiguration, columns: MAX_RACK_SIZE, rows: MAX_RACK_SIZE });
 const shadowSpan = Math.max(largestRack.width, largestRack.height) * 1.18;
 
-function Framing({ layout, reset, spin }: { layout: Layout; reset: number; spin: boolean }) {
+function Framing({ layout, reset, spin, zoom }: { layout: Layout; reset: number; spin: boolean; zoom: number }) {
   const controls = useRef<OrbitControlsImpl>(null);
   const offset = useMemo(() => new Vector3(), []);
   const target = useMemo(() => new Vector3(), []);
   const previousFrame = useRef({ distance: 0, columns: 0, height: 0, aspect: 0 });
   const previousReset = useRef(reset);
+  const previousZoom = useRef(zoom);
   const resetting = useRef(false);
   const { camera, size } = useThree();
   const aspect = size.width / Math.max(1, size.height);
@@ -44,7 +45,11 @@ function Framing({ layout, reset, spin }: { layout: Layout; reset: number; spin:
     } else {
       offset.copy(camera.position).sub(orbit.target);
       // A tote-brand change adjusts width and depth while leaving the camera distance alone.
-      const length = reframe ? offset.length() * distance / previous.distance : offset.length();
+      let length = reframe ? offset.length() * distance / previous.distance : offset.length();
+      if (zoom !== previousZoom.current) {
+        resetting.current = false;
+        length = MathUtils.clamp(length * .84 ** (zoom - previousZoom.current), orbit.minDistance, orbit.maxDistance);
+      }
       if (resetting.current) {
         const azimuth = Math.atan2(offset.x, offset.z);
         const polar = Math.acos(MathUtils.clamp(offset.y / offset.length(), -1, 1));
@@ -67,11 +72,12 @@ function Framing({ layout, reset, spin }: { layout: Layout; reset: number; spin:
     previous.height = height;
     previous.aspect = aspect;
     previousReset.current = reset;
+    previousZoom.current = zoom;
     orbit.target.copy(target);
     camera.lookAt(target);
   });
 
-  return <OrbitControls ref={controls} makeDefault enablePan={false} enableDamping dampingFactor={.11}
+  return <OrbitControls ref={controls} makeDefault enablePan={false} enableZoom={false} enableDamping dampingFactor={.11}
     minPolarAngle={.16} maxPolarAngle={Math.PI / 2 + .15}
     autoRotate={spin} autoRotateSpeed={.72} onStart={() => { resetting.current = false; }} />;
 }
@@ -108,7 +114,7 @@ function FloorContact({ layout }: { layout: Layout }) {
   </mesh>;
 }
 
-function StudioScene({ layout, reset, spin }: { layout: Layout; reset: number; spin: boolean }) {
+function StudioScene({ layout, reset, spin, zoom }: { layout: Layout; reset: number; spin: boolean; zoom: number }) {
   const camera = useThree(({ camera }) => camera) as PerspectiveCamera;
   useEffect(() => {
     camera.near = .05;
@@ -137,14 +143,14 @@ function StudioScene({ layout, reset, spin }: { layout: Layout; reset: number; s
     </mesh>
     <FloorContact layout={layout} />
     <RackFrame layout={layout} />
-    <Framing layout={layout} reset={reset} spin={spin} />
+    <Framing layout={layout} reset={reset} spin={spin} zoom={zoom} />
   </>;
 }
 
-export function Studio({ layout, reset, spin }: { layout: Layout; reset: number; spin: boolean }) {
+export function Studio({ layout, reset, spin, zoom }: { layout: Layout; reset: number; spin: boolean; zoom: number }) {
   return <Canvas shadows dpr={[1, 1.5]} camera={{ position: [2, 2, 4], fov: 34 }}
     gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
     fallback={<p className="viewer-error">The 3D viewer requires WebGL.</p>}>
-    <StudioScene layout={layout} reset={reset} spin={spin} />
+    <StudioScene layout={layout} reset={reset} spin={spin} zoom={zoom} />
   </Canvas>;
 }
