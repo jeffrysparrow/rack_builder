@@ -12,6 +12,11 @@ import { publicSettings, readSettings, record, validateSettings } from './platfo
 
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 const loopback = (hostname: string) => ['localhost', '127.0.0.1', '[::1]'].includes(hostname);
+const publicStorefrontPages = new Map([
+  ['/', '/'], ['/index.html', '/'],
+  ['/rack-builds', '/rack-builds/'], ['/rack-builds/', '/rack-builds/'], ['/rack-builds/index.html', '/rack-builds/'],
+]);
+const pilotStorefrontAliases = new Set(['toteworksatx.com', 'www.totesandtimber.com']);
 
 async function readBody(request: Request, limit: number) {
   if (!request.headers.get('Content-Type')?.toLowerCase().startsWith('application/json')) {
@@ -228,6 +233,10 @@ export default {
   async fetch(request: Request, env: Environment) {
     const url = new URL(request.url);
     try {
+      const storefrontPage = publicStorefrontPages.get(url.pathname);
+      if (storefrontPage && pilotStorefrontAliases.has(url.hostname) && (request.method === 'GET' || request.method === 'HEAD')) {
+        return Response.redirect(new URL(storefrontPage + url.search, 'https://totesandtimber.com'), 301);
+      }
       if (url.pathname === '/admin' || url.pathname === '/admin/') {
         if (!loopback(url.hostname)) await authorize(request, env, await identifyShop(env, url.hostname), url);
       }

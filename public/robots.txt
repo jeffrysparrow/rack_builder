@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://toteworksatx.com/sitemap.xml
+Sitemap: https://totesandtimber.com/sitemap.xml
