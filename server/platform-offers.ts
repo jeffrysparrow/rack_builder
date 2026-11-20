@@ -43,8 +43,9 @@ export async function issueOffer(env: Environment, shop: Shop, inquiryId: string
   const snapshot: OrderSnapshot = {
     shopName: shop.settings.name,
     customer: { name: quote.name, email: quote.email, phone: quote.phone },
-    address: { ...streetAddress(fields), unit: requiredText(fields.unit ?? '', 'the unit', 60, true), notes: '' },
-    windows: quote.windows ?? [], racks: quote.racks, deliveryCents, totalCents, revision: quote.revision,
+    address: { ...streetAddress(fields), unit: requiredText(fields.unit ?? '', 'the unit', 60, true), notes: quote.address?.notes ?? '' },
+    windows: quote.windows ?? [], deliveryPreferences: quote.deliveryPreferences,
+    racks: quote.racks, deliveryCents, totalCents, revision: quote.revision,
     adjustmentCents: subtotalCents - quote.rackSubtotalCents,
     quoteNote: requiredText(fields.quoteNote ?? '', 'the note to the customer', 1000, true),
     attribution: quote.attribution,

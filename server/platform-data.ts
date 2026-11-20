@@ -1,4 +1,4 @@
-import { MAX_DELIVERY_PREFERENCES } from '../src/config/shop';
+import { deliveryPreferenceWindows, MAX_DELIVERY_PREFERENCES } from '../src/config/shop';
 import type { AdminSettings, DeliveryWindow, SavedOrder, SavedInquiry } from '../src/config/shop';
 import { HttpError } from './platform-services';
 
@@ -64,18 +64,37 @@ export function windowsQuery(env: Environment, shop: Shop) {
   `).bind(shop.id, date, date, time, shop.settings.delivery.weeklyCapacity).all<DeliveryWindow>();
 }
 
-export async function requestedWindows(env: Environment, shop: Shop, value: unknown, required = false) {
+function requestedIds(value: unknown, required: boolean) {
   const ids = value === undefined && !required ? [] : value;
   if (!Array.isArray(ids) || ids.length > MAX_DELIVERY_PREFERENCES || (required && ids.length !== MAX_DELIVERY_PREFERENCES)
     || ids.some((id) => typeof id !== 'string') || new Set(ids).size !== ids.length) {
     throw new HttpError(409, required ? 'Choose three different delivery windows.' : 'Choose up to three different delivery windows.');
   }
+  return ids as string[];
+}
+
+export async function requestedWindows(env: Environment, shop: Shop, value: unknown, required = false) {
+  const ids = requestedIds(value, required);
   if (!ids.length) return [];
   const { results } = await windowsQuery(env, shop);
-  const byId = new Map(results.map((window) => [window.id, window]));
   return ids.map((id) => {
-    const window = byId.get(id);
+    const window = results.find((window) => window.id === id);
     if (!window) throw new HttpError(409, 'A selected delivery window is no longer available. Refresh your choices and try again.');
     return window;
   });
+}
+
+export async function requestedQuotePreferences(env: Environment, shop: Shop, value: unknown) {
+  const ids = requestedIds(value, false);
+  if (!ids.some((id) => id.startsWith('day:'))) return { windows: await requestedWindows(env, shop, ids) };
+  const { results } = await windowsQuery(env, shop);
+  const windows = ids.flatMap((id) => {
+    const matches = deliveryPreferenceWindows(id, results);
+    if (!matches.length) throw new HttpError(409, 'A selected delivery day or window is no longer available. Refresh your choices and try again.');
+    return matches;
+  });
+  if (new Set(windows.map((window) => window.id)).size !== windows.length) {
+    throw new HttpError(409, 'Choose all-day availability or specific windows for a date.');
+  }
+  return { windows, deliveryPreferences: ids };
 }

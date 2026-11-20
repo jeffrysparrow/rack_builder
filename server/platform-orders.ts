@@ -26,7 +26,7 @@ export async function createQuote(shop: Shop, destination: Destination, cents: n
   return details + '.' + await quoteSignature(shop, destination, details, secret);
 }
 
-async function verifyQuote(shop: Shop, destination: Destination, token: unknown, secret: string) {
+export async function verifyQuote(shop: Shop, destination: Destination, token: unknown, secret: string) {
   if (typeof token === 'string' && /^\d+\.\d+\.\d+\.[0-9a-f]{64}$/.test(token)) {
     const [revision, expiration, fee, signature] = token.split('.');
     if (Number(revision) === shop.revision && Number(expiration) > Date.now()

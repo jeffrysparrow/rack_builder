@@ -8,7 +8,7 @@ import { formatCutLength } from '../config/rack';
 import { depositModes, depositTriggers } from '../config/payments';
 import type { DepositPolicy, RecordedPayment } from '../config/payments';
 import type { AdminReview } from '../config/reviews';
-import { describeRack, formatWindow, requestJson } from '../config/shop';
+import { describeDeliveryPreference, describeRack, formatWindow, requestJson } from '../config/shop';
 import type { AdminSettings, DeliveryWindow, SavedInquiry, SavedOffer, SavedOrder, SavedRack } from '../config/shop';
 import { OrderPayments, QuoteOfferEditor } from './AdminOrderWorkflow';
 import type { AdminUpdate } from './AdminOrderWorkflow';
@@ -328,9 +328,13 @@ function InquiryDetails({ inquiry, update, offer, origin, onCopy }: {
       {snapshot.kind === 'quote' ? <>
         <p>Rack and accessories estimate <strong>{dollars.format(snapshot.rackSubtotalCents / 100)}</strong> before delivery</p>
         <RackDetails racks={snapshot.racks} />
+        {snapshot.flexible && <p>The customer is flexible about delivery timing.</p>}
+        {snapshot.address?.notes && <p className="admin-notes">{snapshot.address.notes}</p>}
         {!!snapshot.windows?.length && <>
           <h3>Preferred delivery times</h3>
-          <ol className="payment-history">{snapshot.windows.map((window) => <li key={window.id}>{formatWindow(window)}</li>)}</ol>
+          <ol className="payment-history">{snapshot.deliveryPreferences
+            ? snapshot.deliveryPreferences.map((choice) => <li key={choice}>{describeDeliveryPreference(choice, snapshot.windows ?? [])}</li>)
+            : snapshot.windows?.map((window) => <li key={window.id}>{formatWindow(window)}</li>)}</ol>
         </>}
         <QuoteOfferEditor inquiryId={id} snapshot={snapshot} offer={offer} origin={origin} update={update} onCopy={onCopy} />
       </> : <p className="admin-notes">{snapshot.configuration}</p>}
@@ -391,10 +395,11 @@ function OrderDetails({ order, update, checkout, paymentOrigin, onCopy, availabl
   const { address, customer } = snapshot;
   const window = snapshot.windows.find(({ id }) => id === confirmedWindow);
   const payLink = paymentToken ? paymentOrigin + '/pay/' + paymentToken : '';
-  const preferenceRank = new Map(snapshot.windows.map(({ id }, index) => [id, index + 1]));
-  const rank = (window: DeliveryWindow) => preferenceRank.get(window.id) ?? snapshot.windows.length + 1;
+  const preferred = snapshot.deliveryPreferences ?? snapshot.windows.map(({ id }) => id);
+  const preferenceRank = new Map(preferred.map((choice, index) => [choice, index + 1]));
+  const rank = (window: DeliveryWindow) => preferenceRank.get(window.id) ?? preferenceRank.get('day:' + window.date);
   const choices = order.quoteInquiryId
-    ? [...available].sort((left, right) => rank(left) - rank(right))
+    ? [...available].sort((left, right) => (rank(left) ?? preferred.length + 1) - (rank(right) ?? preferred.length + 1))
     : snapshot.windows;
   const canComplete = !!window && !order.completedAt && !order.cancelledAt && (status === 'paid' || order.recordedPaymentCents === snapshot.totalCents);
   const canCancel = (status === 'confirmed' || (status === 'requested' && !!order.quoteInquiryId)) && !order.completedAt
@@ -422,7 +427,7 @@ function OrderDetails({ order, update, checkout, paymentOrigin, onCopy, availabl
         <label className="delivery-field">{order.quoteInquiryId ? 'Available delivery windows' : 'Customer’s preferred delivery windows'}
           <select name="window" required defaultValue=""><option value="">Choose a window to confirm</option>
             {choices.map((choice) => <option key={choice.id} value={choice.id}>
-              {preferenceRank.has(choice.id) ? `Preference ${preferenceRank.get(choice.id)} · ` : ''}{formatWindow(choice)}
+              {rank(choice) ? `Preference ${rank(choice)} · ` : ''}{formatWindow(choice)}
             </option>)}
           </select>
         </label>

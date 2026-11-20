@@ -14,7 +14,7 @@ const home = new Vector3(.64, .34, 1).normalize();
 const largestRack = calculateRack({ ...defaultConfiguration, columns: MAX_RACK_SIZE, rows: MAX_RACK_SIZE });
 const shadowSpan = Math.max(largestRack.width, largestRack.height) * 1.18;
 
-function Framing({ layout, reset, spin, zoom }: { layout: Layout; reset: number; spin: boolean; zoom: number }) {
+function Framing({ layout, reset, zoom }: { layout: Layout; reset: number; zoom: number }) {
   const controls = useRef<OrbitControlsImpl>(null);
   const offset = useMemo(() => new Vector3(), []);
   const target = useMemo(() => new Vector3(), []);
@@ -79,7 +79,7 @@ function Framing({ layout, reset, spin, zoom }: { layout: Layout; reset: number;
 
   return <OrbitControls ref={controls} makeDefault enablePan={false} enableZoom={false} enableDamping dampingFactor={.11}
     minPolarAngle={.16} maxPolarAngle={Math.PI / 2 + .15}
-    autoRotate={spin} autoRotateSpeed={.72} onStart={() => { resetting.current = false; }} />;
+    onStart={() => { resetting.current = false; }} />;
 }
 
 function RackFrame({ layout }: { layout: Layout }) {
@@ -114,7 +114,7 @@ function FloorContact({ layout }: { layout: Layout }) {
   </mesh>;
 }
 
-function StudioScene({ layout, reset, spin, zoom }: { layout: Layout; reset: number; spin: boolean; zoom: number }) {
+function StudioScene({ layout, reset, zoom }: { layout: Layout; reset: number; zoom: number }) {
   const camera = useThree(({ camera }) => camera) as PerspectiveCamera;
   useEffect(() => {
     camera.near = .05;
@@ -143,14 +143,14 @@ function StudioScene({ layout, reset, spin, zoom }: { layout: Layout; reset: num
     </mesh>
     <FloorContact layout={layout} />
     <RackFrame layout={layout} />
-    <Framing layout={layout} reset={reset} spin={spin} zoom={zoom} />
+    <Framing layout={layout} reset={reset} zoom={zoom} />
   </>;
 }
 
-export function Studio({ layout, reset, spin, zoom }: { layout: Layout; reset: number; spin: boolean; zoom: number }) {
+export function Studio({ layout, reset, zoom }: { layout: Layout; reset: number; zoom: number }) {
   return <Canvas shadows dpr={[1, 1.5]} camera={{ position: [2, 2, 4], fov: 34 }}
     gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
     fallback={<p className="viewer-error">The 3D viewer requires WebGL.</p>}>
-    <StudioScene layout={layout} reset={reset} spin={spin} zoom={zoom} />
+    <StudioScene layout={layout} reset={reset} zoom={zoom} />
   </Canvas>;
 }

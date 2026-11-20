@@ -16,6 +16,8 @@ export function QuoteOfferEditor({ inquiryId, snapshot, offer, origin, update, o
   if (offer?.orderId) return <p>Accepted as <a href={'#order-' + offer.orderId}>order {offer.orderId.slice(0, 8).toUpperCase()}</a>.</p>;
   const link = offer ? `${origin}/quote/${offer.token}` : '';
   const active = offer && offer.expiresAt > Date.now();
+  const address = offer?.address ?? snapshot.address;
+  const deliveryCents = offer?.deliveryCents ?? snapshot.deliveryEstimateCents;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -42,15 +44,15 @@ export function QuoteOfferEditor({ inquiryId, snapshot, offer, origin, update, o
       <form className="delivery-form" onSubmit={submit}>
         <div className="consult-contact">
           <label className="delivery-field">Rack subtotal ($)<input required name="subtotal" type="number" min="0" step="0.01" defaultValue={(offer?.subtotalCents ?? snapshot.rackSubtotalCents) / 100} /></label>
-          <label className="delivery-field">Delivery fee ($)<input required name="delivery" type="number" min="0" step="0.01" defaultValue={offer ? offer.deliveryCents / 100 : ''} /></label>
+          <label className="delivery-field">Delivery fee ($)<input required name="delivery" type="number" min="0" step="0.01" defaultValue={deliveryCents === undefined ? '' : deliveryCents / 100} /></label>
         </div>
-        <label className="delivery-field">Street address<input required name="street" autoComplete="off" maxLength={160} defaultValue={offer?.address.street} /></label>
+        <label className="delivery-field">Street address<input required name="street" autoComplete="off" maxLength={160} defaultValue={address?.street} /></label>
         <div className="delivery-city-row">
-          <label className="delivery-field">City<input required name="city" maxLength={80} defaultValue={offer?.address.city} /></label>
-          <label className="delivery-field">State<input required name="state" maxLength={40} defaultValue={offer?.address.state ?? 'TX'} /></label>
-          <label className="delivery-field">ZIP code<input required name="zip" inputMode="numeric" maxLength={10} pattern="[0-9]{5}(-[0-9]{4})?" defaultValue={offer?.address.zip ?? snapshot.zip} /></label>
+          <label className="delivery-field">City<input required name="city" maxLength={80} defaultValue={address?.city} /></label>
+          <label className="delivery-field">State<input required name="state" maxLength={40} defaultValue={address?.state ?? 'TX'} /></label>
+          <label className="delivery-field">ZIP code<input required name="zip" inputMode="numeric" maxLength={10} pattern="[0-9]{5}(-[0-9]{4})?" defaultValue={address?.zip ?? snapshot.zip} /></label>
         </div>
-        <label className="delivery-field">Apt or unit <small>(optional)</small><input name="unit" maxLength={60} defaultValue={offer?.address.unit} /></label>
+        <label className="delivery-field">Apt or unit <small>(optional)</small><input name="unit" maxLength={60} defaultValue={address?.unit} /></label>
         <label className="delivery-field">Note to customer <small>(optional)</small><textarea name="quoteNote" rows={2} maxLength={1000} defaultValue={offer?.quoteNote} /></label>
         <button className="delivery-action">{offer ? 'Create revised quote link' : 'Create quote link'}</button>
       </form>

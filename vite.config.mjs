@@ -1,10 +1,10 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
-import { rackPhotos, rackPhotoSource } from './src/config/gallery.ts';
+import { carouselImageSizes, rackPhotoGroups, rackPhotos, rackPhotoSource } from './src/config/gallery.ts';
 
 function photoMarkup(photo, eager = false) {
   const { src, srcSet, width, height } = rackPhotoSource(photo);
-  const sizes = eager ? '(max-width: 720px) 100vw, 52vw' : '(max-width: 580px) 100vw, (max-width: 960px) 50vw, 33vw';
+  const sizes = eager ? '(max-width: 720px) 100vw, 52vw' : carouselImageSizes;
   return `<img src="${src}" srcset="${srcSet}" sizes="${sizes}" width="${width}" height="${height}" alt="${photo.alt}" ${eager ? 'fetchpriority="high"' : 'loading="lazy" decoding="async"'}>`;
 }
 
@@ -12,10 +12,21 @@ export default defineConfig({
   plugins: [{
     name: 'tote-rack-static-photos',
     transformIndexHtml(html) {
-      return html.replace('<!-- storefront-hero -->', photoMarkup(rackPhotos[0], true))
+      return html.replace('<!-- storefront-hero -->', photoMarkup(rackPhotos[2], true))
         .replace('<!-- photo-hero -->', photoMarkup(rackPhotos[2], true))
-        .replace('<!-- photo-cards -->', () => rackPhotos.map((photo) =>
-          `<figure class="photo-card"><a href="/racks/${photo.slug}-1440.webp">${photoMarkup(photo)}</a><figcaption>${photo.title}</figcaption></figure>`).join('\n'));
+        .replace('<!-- rack-carousels -->', () => rackPhotoGroups.map(({ id, title, photos }) =>
+          `<section class="rack-carousel" aria-labelledby="gallery-${id}">
+            <div class="carousel-heading">
+              <h3 id="gallery-${id}">${title}</h3>
+              <div class="carousel-controls">
+                <button type="button" data-slide="-1" aria-controls="gallery-track-${id}" aria-label="Previous photo in ${title}">‹</button>
+                <button type="button" data-slide="1" aria-controls="gallery-track-${id}" aria-label="Next photo in ${title}">›</button>
+              </div>
+            </div>
+            <ul class="carousel-track" id="gallery-track-${id}">
+              ${photos.map((photo) => `<li><a href="${rackPhotoSource(photo).full}">${photoMarkup(photo)}</a></li>`).join('')}
+            </ul>
+          </section>`).join('\n'));
     },
   }],
   build: { rollupOptions: { input: {

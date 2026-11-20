@@ -12,7 +12,7 @@ export const MAX_DELIVERY_PREFERENCES = 3;
 export const defaultShop = {
   name: 'Totes & Timber',
   title: 'Custom wooden tote racks',
-  description: 'Get your garage or shed organized with a rack sized for your 27-gallon totes. Keep it open or add a solid top for a work surface.',
+  description: 'Get your garage or shed organized with a rack sized for your 27-gallon totes.',
   serviceArea: 'Austin and nearby areas',
   buildLeadTime: '',
   publicEmail: '',
@@ -49,8 +49,28 @@ export function formatWindowTime({ date, start, end }: DeliveryWindow) {
   return `${windowTime.format(new Date(date + 'T' + start + ':00Z'))}–${windowTime.format(new Date(date + 'T' + end + ':00Z'))}`;
 }
 
+export function formatDeliveryDate(date: string) {
+  return windowDay.format(new Date(date + 'T00:00:00Z'));
+}
+
 export function formatWindow(window: DeliveryWindow) {
-  return `${windowDay.format(new Date(window.date + 'T00:00:00Z'))}, ${formatWindowTime(window)}`;
+  return `${formatDeliveryDate(window.date)}, ${formatWindowTime(window)}`;
+}
+
+export function deliveryPreferenceWindows(choice: string, windows: DeliveryWindow[]) {
+  return choice.startsWith('day:')
+    ? windows.filter((window) => window.date === choice.slice(4))
+    : windows.filter((window) => window.id === choice);
+}
+
+export function describeDeliveryPreference(choice: string, windows: DeliveryWindow[]) {
+  const [first] = deliveryPreferenceWindows(choice, windows);
+  if (!first) return '';
+  return choice.startsWith('day:') ? `${formatDeliveryDate(first.date)}, any available time` : formatWindow(first);
+}
+
+export function formatRackSize({ rows, columns }: Pick<import('./rack').RackConfiguration, 'rows' | 'columns'>) {
+  return `${rows} high × ${columns} across`;
 }
 
 export async function requestJson<T>(path: string, body?: unknown, method = body === undefined ? 'GET' : 'POST'): Promise<T> {
@@ -81,7 +101,7 @@ export interface SavedRack {
 export function describeRack({ configuration, price }: Pick<SavedRack, 'configuration' | 'price'>) {
   const top = finishes.find(({ id }) => id === configuration.topMaterial)?.label;
   return [
-    `${configuration.columns} wide × ${configuration.rows} high`,
+    formatRackSize(configuration),
     `Fits ${toteProfiles[getRackToteType(configuration)].label}`,
     top,
     price.wheelQuantity ? `${price.wheelQuantity} casters` : 'No casters',
@@ -94,6 +114,7 @@ export interface OrderSnapshot {
   customer: Customer;
   address: { street: string; unit: string; city: string; state: string; zip: string; notes: string };
   windows: DeliveryWindow[];
+  deliveryPreferences?: string[];
   racks: SavedRack[];
   deliveryCents: number;
   totalCents: number;
@@ -157,6 +178,10 @@ export interface QuoteSnapshot extends Customer {
   kind: 'quote';
   shopName: string;
   zip: string;
+  address?: OrderSnapshot['address'];
+  deliveryEstimateCents?: number;
+  flexible?: boolean;
+  deliveryPreferences?: string[];
   details: string;
   racks: SavedRack[];
   rackSubtotalCents: number;

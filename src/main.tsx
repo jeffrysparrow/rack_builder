@@ -5,7 +5,10 @@ import { CustomerOffer } from './components/CustomerOffer';
 import { defaultShop, requestJson } from './config/shop';
 import type { Storefront } from './config/shop';
 import { captureVisit } from './visit';
+import { enableRackCarousels } from './rack-carousel';
 import './style.css';
+
+enableRackCarousels();
 
 const BuilderAdmin = lazy(() => import('./components/BuilderAdmin').then(({ BuilderAdmin }) => ({ default: BuilderAdmin })));
 const offline: Storefront = { settings: defaultShop, revision: 1, deliveryAvailable: false, consultAvailable: false, reviews: [] };
