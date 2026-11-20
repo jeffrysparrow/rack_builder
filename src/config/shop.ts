@@ -10,7 +10,7 @@ export const MAX_ORDER_RACKS = 20;
 export const MAX_DELIVERY_PREFERENCES = 3;
 
 export const defaultShop = {
-  name: 'ToteWorks ATX',
+  name: 'Totes & Timber',
   title: 'Custom wooden tote racks',
   description: 'Get your garage or shed organized with a rack sized for your 27-gallon totes. Keep it open or add a solid top for a work surface.',
   serviceArea: 'Austin and nearby areas',
