@@ -1,11 +1,16 @@
 import { Component, lazy, Suspense, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { track } from '../analytics';
 import { DeliveryDetails } from './DeliveryDetails';
-import { CustomerReviews, hasMarketplaceReviews, StorefrontDetails } from './StorefrontDetails';
+import { OrderRequest } from './OrderRequest';
+import { CustomerReviews } from './CustomerReviews';
+import { StorefrontDetails } from './StorefrontDetails';
 import { calculateRack, defaultConfiguration, finishes, formatCutLength, getRackToteType } from '../config/rack';
 import type { RackConfiguration } from '../config/rack';
 import { estimateOrderPrice, estimatePrice } from '../config/pricing';
 import { deliveryToteBrand, isToteType, toteProfiles } from '../config/totes';
+import { rackPhotos, rackPhotoSource } from '../config/gallery';
+import { shareConfiguration, sharedConfiguration } from '../config/share';
 
 import { MAX_ORDER_RACKS } from '../config/shop';
 import type { Storefront } from '../config/shop';
@@ -72,10 +77,11 @@ function combineCuts(layouts: ReturnType<typeof calculateRack>[]) {
 }
 
 export function Configurator({ shop }: { shop: Storefront }) {
-  const { settings, revision, deliveryAvailable, consultAvailable } = shop;
+  const { settings, revision, deliveryAvailable, consultAvailable, reviews } = shop;
   const { rates, build } = settings;
+  const [shared] = useState(() => sharedConfiguration(location.search, build));
   const [{ racks, activeIndex }, setOrder] = useState({
-    racks: [{ ...defaultConfiguration, columns: Math.min(defaultConfiguration.columns, build.maxColumns), rows: Math.min(defaultConfiguration.rows, build.maxRows) }],
+    racks: shared.racks.length ? shared.racks : [{ ...defaultConfiguration, columns: Math.min(defaultConfiguration.columns, build.maxColumns), rows: Math.min(defaultConfiguration.rows, build.maxRows) }],
     activeIndex: 0,
   });
   const config = racks[activeIndex];
@@ -83,8 +89,21 @@ export function Configurator({ shop }: { shop: Storefront }) {
   const [reset, setReset] = useState(0);
   const [zoom, setZoom] = useState(0);
   const [copyStatus, setCopyStatus] = useState('');
+  const [shareStatus, setShareStatus] = useState('');
+  const [shareLink, setShareLink] = useState('');
+  const [quoteZip, setQuoteZip] = useState('');
   const deliveryDialog = useRef<HTMLDialogElement>(null);
-  const openDelivery = () => deliveryDialog.current?.showModal();
+  function trackIntent() {
+    if (consultAvailable) {
+      track('configurator_started');
+      track('configuration_completed');
+      track('begin_checkout');
+    }
+  }
+  const openDelivery = () => {
+    trackIntent();
+    deliveryDialog.current?.showModal();
+  };
   const layouts = useMemo(() => racks.map((rack) => calculateRack(rack, build)), [racks, build]);
   const layout = layouts[activeIndex];
   const price = estimateOrderPrice(racks, rates, build);
@@ -103,15 +122,16 @@ export function Configurator({ shop }: { shop: Storefront }) {
     updateRack((rack) => ({ ...rack, [key]: value }));
   };
   const changeLayout = (axis: 'columns' | 'rows', delta: number) => {
+    if (consultAvailable) track('configurator_started');
     updateRack((rack) => ({
       ...rack,
       [axis]: Math.max(minimumRackSize[axis], Math.min(axis === 'columns' ? build.maxColumns : build.maxRows, rack[axis] + delta)),
     }));
   };
-  const addRack = () => setOrder((order) => ({
-    racks: [...order.racks, { ...order.racks[order.activeIndex] }],
-    activeIndex: order.racks.length,
-  }));
+  const addRack = () => {
+    if (consultAvailable) track('configurator_started');
+    setOrder((order) => ({ racks: [...order.racks, { ...order.racks[order.activeIndex] }], activeIndex: order.racks.length }));
+  };
   const removeRack = () => setOrder((order) => {
     if (order.racks.length === 1) return order;
     const racks = order.racks.filter((_, index) => index !== order.activeIndex);
@@ -132,13 +152,30 @@ export function Configurator({ shop }: { shop: Storefront }) {
     }
   }
 
+  async function copyConfiguration() {
+    if (consultAvailable) {
+      track('configurator_started');
+      track('configuration_completed');
+    }
+    const link = shareConfiguration(shop.shareOrigin || location.origin, racks);
+    try {
+      await navigator.clipboard.writeText(link);
+      setShareLink('');
+      setShareStatus('Configuration link copied.');
+    } catch {
+      setShareStatus('Copy the configuration link below.');
+      setShareLink(link);
+    }
+  }
+
   return <>
     <header className="site-header">
       <a className="identity" href="#product"><span className="brand-icon"><Icon name="rack" /></span><span>{settings.name}</span></a>
       <nav className="site-nav" aria-label="Main navigation">
         <a href="#configure">Configure</a>
-        {hasMarketplaceReviews && <a href="#reviews">Reviews</a>}
-        {consultAvailable && <a href="#consult">Custom requests</a>}
+        <a href="/rack-builds/">Rack photos</a>
+        {reviews.length > 0 && <a href="#reviews">Reviews</a>}
+        {consultAvailable && <a href="#consult">Contact</a>}
         {deliveryAvailable && <button type="button" className="nav-delivery" onClick={openDelivery}>Delivery</button>}
       </nav>
     </header>
@@ -180,8 +217,11 @@ export function Configurator({ shop }: { shop: Storefront }) {
             </div>
           </div>
         </section>
-        <aside className="settings" aria-label="Rack configuration">
+        <aside className="settings" aria-label="Rack configuration" onChange={() => {
+          if (consultAvailable) track('configurator_started');
+        }}>
           <section className="setting-section rack-order" aria-labelledby="rack-order-heading">
+            {shared.changed && <p role="status" className="layout-help">Some options in this link were unavailable. Review the configuration before requesting your rack.</p>}
             <div className="section-heading">
               <h2 id="rack-order-heading">Racks in your order</h2>
               <span className="capacity">{orderCapacity} tote spaces</span>
@@ -268,19 +308,49 @@ export function Configurator({ shop }: { shop: Storefront }) {
               {price.toteQuantity > 0 && <div><dt>Storage totes · {price.toteQuantity}</dt><dd>{dollars.format(price.totes)}</dd></div>}
               <div className="price-total"><dt>Rack &amp; accessories total</dt><dd aria-live="polite">{dollars.format(price.total)}</dd></div>
             </dl>
-            {!deliveryAvailable ? <>
-              <button type="button" className="delivery-next" onClick={copyEstimate}>Copy rack estimate</button>
-              <p className="layout-help">Delivery is quoted separately.</p>
-              {copyStatus && <p className="layout-help" role="status">{copyStatus}</p>}
-            </> : <button type="button" className="delivery-next" onClick={openDelivery}>Get a delivery estimate</button>}
+            <p className="layout-help">Delivery is calculated from your street address and ZIP code.</p>
+            <div className="estimate-actions">
+              {consultAvailable && <a href="#quote" className="delivery-next" onClick={trackIntent}>Continue to order</a>}
+              <button type="button" className={`delivery-next${consultAvailable ? ' delivery-edit' : ''}`}
+                onClick={deliveryAvailable ? openDelivery : copyEstimate}>
+                {deliveryAvailable ? 'Get a delivery estimate' : 'Copy rack estimate'}
+              </button>
+              <button type="button" className="delivery-next delivery-edit" onClick={copyConfiguration}>Share configuration</button>
+            </div>
+            {copyStatus && <p className="layout-help" role="status">{copyStatus}</p>}
+            {shareStatus && <p className="layout-help" role="status">{shareStatus}</p>}
+            {shareLink && <label className="delivery-field">Configuration link<input readOnly value={shareLink} onFocus={(event) => event.target.select()} /></label>}
           </section>
         </aside>
       </div>
       {deliveryAvailable && <dialog className="delivery-dialog" ref={deliveryDialog} aria-labelledby="delivery-heading">
         <button type="button" className="delivery-close" onClick={() => deliveryDialog.current?.close()}>Close</button>
-        <DeliveryDetails rackTotal={price.total} racks={racks} timezone={settings.timezone} revision={revision} schedulingAvailable={consultAvailable} />
+        <DeliveryDetails rackTotal={price.total} racks={racks} timezone={settings.timezone} revision={revision}
+          depositPolicy={settings.deposit} initialZip={quoteZip}
+          schedulingAvailable={consultAvailable} onRequestOrder={(zip) => {
+            setQuoteZip(zip);
+            deliveryDialog.current?.close();
+          }} />
       </dialog>}
-      {consultAvailable ? <StorefrontDetails racks={racks} /> : <CustomerReviews />}
+      {consultAvailable && <OrderRequest racks={racks} subtotal={price.total} revision={revision} deliveryZip={quoteZip} settings={settings}
+        onDeliveryEstimate={deliveryAvailable ? (zip) => {
+          setQuoteZip(zip);
+          openDelivery();
+        } : undefined} />}
+      <CustomerReviews reviews={reviews} />
+      <section className="store-section storefront-photos" aria-labelledby="storefront-photos-heading">
+        <div className="store-section-heading"><h2 id="storefront-photos-heading">Real rack builds</h2></div>
+        <div className="photo-grid">
+          {[rackPhotos[0], rackPhotos[2], rackPhotos[4]].map((photo) => <figure className="photo-card" key={photo.slug}>
+            <a href="/rack-builds/" aria-label={`See rack photos including ${photo.title.toLowerCase()}`}>
+              <img {...rackPhotoSource(photo)} alt={photo.alt} loading="lazy" sizes="(max-width: 580px) 100vw, 33vw" />
+            </a>
+            <figcaption>{photo.title}</figcaption>
+          </figure>)}
+        </div>
+        <a href="/rack-builds/" className="text-link">See all rack photos and options</a>
+      </section>
+      {consultAvailable && <StorefrontDetails racks={racks} />}
       {import.meta.env.MODE === 'storefront' && <details className="settings cut-list">
         <summary id="cut-list-heading">2×4 cut list{multiple && ` · all ${racks.length} racks`}</summary>
         <table aria-labelledby="cut-list-heading">

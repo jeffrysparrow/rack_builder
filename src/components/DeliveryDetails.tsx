@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { RackConfiguration } from '../config/rack';
+import { depositForOrder } from '../config/payments';
+import type { DepositPolicy } from '../config/payments';
 import { formatWindowTime, requestJson } from '../config/shop';
 import type { DeliveryWindow } from '../config/shop';
+import { getVisit } from '../visit';
+import { DiscoveryField } from './DiscoveryField';
 
 interface DeliveryAddress {
   street: string;
@@ -15,10 +19,14 @@ interface DeliveryAddress {
 
 type DeliveryQuote = { feeCents: number; token: string } | { error: string } | null;
 const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+const exactDollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 const quoteUnavailable = 'Delivery quotes are unavailable. The fee can be confirmed by address.';
 
-export function DeliveryDetails({ rackTotal, racks, timezone, revision, schedulingAvailable }: {
+export function DeliveryDetails({ rackTotal, racks, timezone, revision, schedulingAvailable, onRequestOrder, depositPolicy, initialZip }: {
   rackTotal: number; racks: RackConfiguration[]; timezone: string; revision: number; schedulingAvailable: boolean;
+  onRequestOrder: (zip: string) => void;
+  depositPolicy: DepositPolicy;
+  initialZip: string;
 }) {
   const [address, setAddress] = useState<DeliveryAddress | null>(null);
   const [editing, setEditing] = useState(true);
@@ -72,9 +80,10 @@ export function DeliveryDetails({ rackTotal, racks, timezone, revision, scheduli
   }
 
   const fee = quote && 'feeCents' in quote ? quote.feeCents / 100 : null;
+  const deposit = fee === null ? 0 : depositForOrder(depositPolicy, Math.round((rackTotal + fee) * 100), racks.some((rack) => rack.includeTotesWithDelivery)) / 100;
 
   return <section className="settings delivery-details" id="delivery-details" aria-labelledby="delivery-heading">
-    <h2 id="delivery-heading">Delivery details</h2>
+    <h2 id="delivery-heading">Delivery fee and dates</h2>
     {editing || !address ? <>
       <p className="layout-help">Enter your address to see the delivery fee and your total.</p>
       <form className="delivery-form" onSubmit={review}>
@@ -100,9 +109,9 @@ export function DeliveryDetails({ rackTotal, racks, timezone, revision, scheduli
           </label>
           <label className="delivery-field">
             ZIP code
-            <input name="zip" autoComplete="shipping postal-code" inputMode="numeric" required
+            <input key={address ? undefined : initialZip} name="zip" autoComplete="shipping postal-code" inputMode="numeric" required
               pattern="[0-9]{5}(-[0-9]{4})?" title="Use a 5-digit ZIP code or ZIP+4"
-              maxLength={10} defaultValue={address?.zip} />
+              maxLength={10} defaultValue={address?.zip ?? initialZip} />
           </label>
         </div>
         <label className="delivery-field">
@@ -123,16 +132,24 @@ export function DeliveryDetails({ rackTotal, racks, timezone, revision, scheduli
         </dd></div>
         {fee !== null && <div className="price-total"><dt>Estimated total with delivery</dt>
           <dd aria-live="polite">{dollars.format(rackTotal + fee)}</dd></div>}
+        {fee !== null && deposit > 0 && <>
+          <div><dt>Deposit after confirmation</dt><dd>{exactDollars.format(deposit)}</dd></div>
+          <div><dt>Balance due at delivery</dt><dd>{exactDollars.format(rackTotal + fee - deposit)}</dd></div>
+        </>}
       </dl>
-      {quote && 'error' in quote && <p className="layout-help" role="status">{quote.error}</p>}
-      {schedulingAvailable && quote && 'token' in quote && <DeliveryRequest quoteToken={quote.token} address={address} racks={racks} timezone={timezone} />}
+      {quote && 'error' in quote && <p className="layout-help" role="status">{quote.error}
+        {schedulingAvailable && <> <a href="#quote" onClick={() => onRequestOrder(address.zip)}>Continue to order</a>.</>}
+      </p>}
+      {schedulingAvailable && quote && 'token' in quote && <DeliveryRequest quoteToken={quote.token} address={address}
+        racks={racks} timezone={timezone} onRequestOrder={() => onRequestOrder(address.zip)} />}
       <button type="button" className="delivery-action delivery-edit" onClick={edit}>Edit delivery details</button>
     </div>}
   </section>;
 }
 
-function DeliveryRequest({ quoteToken, address, racks, timezone }: {
+function DeliveryRequest({ quoteToken, address, racks, timezone, onRequestOrder }: {
   quoteToken: string; address: DeliveryAddress; racks: RackConfiguration[]; timezone: string;
+  onRequestOrder: () => void;
 }) {
   const [windows, setWindows] = useState<DeliveryWindow[] | null>(null);
   const [dates, setDates] = useState(['', '', '']);
@@ -162,7 +179,7 @@ function DeliveryRequest({ quoteToken, address, racks, timezone }: {
     try {
       const contact = Object.fromEntries(new FormData(event.currentTarget));
       const result = await requestJson<{ id: string }>('/api/orders', {
-        ...contact, id, quoteToken, address, racks, windows: choices,
+        ...contact, id, quoteToken, address, racks, windows: choices, visit: getVisit(),
       });
       setOrder(result.id);
     } catch (error) {
@@ -174,8 +191,8 @@ function DeliveryRequest({ quoteToken, address, racks, timezone }: {
 
   if (order) return <div className="delivery-request" role="status">
     <h3>Order request received</h3>
-    <p>Your builder will confirm one of your delivery windows and follow up about payment.</p>
-    <p>Order reference <strong>{order.slice(0, 8)}</strong></p>
+    <p>Your builder will review availability, confirm your delivery window, and follow up about payment.</p>
+    <p>Order reference <strong>{order.slice(0, 8).toUpperCase()}</strong></p>
   </div>;
 
   const days = [...new Set(windows?.map(({ date }) => date))];
@@ -183,8 +200,7 @@ function DeliveryRequest({ quoteToken, address, racks, timezone }: {
   return <section className="delivery-request" aria-labelledby="delivery-preferences">
     <h3 id="delivery-preferences">Preferred delivery times</h3>
     {windows === null && !error && <p role="status">Loading delivery times…</p>}
-    {windows && windows.length < 3 && <p>Online scheduling is currently unavailable. <a href="#consult"
-      onClick={() => document.querySelector<HTMLDialogElement>('.delivery-dialog')?.close()}>Contact your builder</a> to arrange delivery.</p>}
+    {windows && windows.length < 3 && <p><a href="#quote" onClick={onRequestOrder}>Continue to order</a> to share any available delivery preferences.</p>}
     {windows && windows.length >= 3 && <form className="delivery-form" onSubmit={submit}>
       <p className="layout-help">Choose three different windows in order of preference. All times are local to the shop ({timezone}).</p>
       {choices.map((choice, index) => <div className="schedule-option" key={index}>
@@ -210,10 +226,12 @@ function DeliveryRequest({ quoteToken, address, racks, timezone }: {
         <label className="delivery-field">Email<input name="email" type="email" autoComplete="email" required maxLength={254} /></label>
         <label className="delivery-field">Phone<input name="phone" type="tel" autoComplete="tel" required maxLength={40} /></label>
       </div>
-      <button className="delivery-action" disabled={busy}>{busy ? 'Sending…' : 'Request order'}</button>
+      <DiscoveryField />
+      <button className="delivery-action" disabled={busy}>{busy ? 'Sending…' : 'Submit order request'}</button>
     </form>}
     {error && <p role="alert">{error}</p>}
     {error && <button type="button" className="delivery-action delivery-edit" onClick={refresh}>Refresh delivery times</button>}
+    {error && (!windows || windows.length >= 3) && <p><a href="#quote" onClick={onRequestOrder}>Continue to order</a></p>}
   </section>;
 }
 

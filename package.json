@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "build:storefront": "tsc --noEmit && vite build --mode storefront",
     "preview": "vite preview",
-    "dev:worker": "npx wrangler@4 dev --ip 127.0.0.1",
+    "dev:worker": "npx wrangler@4 dev --local --ip 127.0.0.1 --infer-origin-from-routes=false",
     "db:local": "npx wrangler@4 d1 migrations apply DB --local"
   },
   "dependencies": {

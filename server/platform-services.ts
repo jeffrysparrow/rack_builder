@@ -20,9 +20,20 @@ export function contactEmail(value: unknown, optional = false) {
   return email.toLowerCase();
 }
 
-export function streetAddress(data: Record<string, unknown>): Destination {
-  const zip = requiredText(data.zip, 'the ZIP code', 10);
+export function zipCode(value: unknown) {
+  const zip = requiredText(value, 'the ZIP code', 10);
   if (!/^\d{5}(-\d{4})?$/.test(zip)) throw new HttpError(400, 'Enter a valid ZIP code.');
+  return zip;
+}
+
+export function requestId(value: unknown) {
+  const id = requiredText(value, 'the request ID', 36);
+  if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id)) throw new HttpError(400, 'Check the request ID.');
+  return id;
+}
+
+export function streetAddress(data: Record<string, unknown>): Destination {
+  const zip = zipCode(data.zip);
   return {
     street: requiredText(data.street, 'the street address', 160),
     city: requiredText(data.city, 'the city', 80),

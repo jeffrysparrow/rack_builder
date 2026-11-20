@@ -2,11 +2,13 @@ import { calculateCutList, finishes } from '../src/config/rack';
 import type { RackConfiguration } from '../src/config/rack';
 import { estimatePrice } from '../src/config/pricing';
 import { isToteType } from '../src/config/totes';
-import { formatWindow, MAX_ORDER_RACKS } from '../src/config/shop';
-import type { OrderSnapshot } from '../src/config/shop';
-import { orderColumns, orderData, shopClock, windowsQuery } from './platform-data';
+import { formatWindow, MAX_ORDER_RACKS, snapshotPayment } from '../src/config/shop';
+import type { DeliveryWindow, OrderSnapshot } from '../src/config/shop';
+import { leadAttribution } from './platform-attribution';
+import { orderColumns, orderData, requestedWindows, shopClock } from './platform-data';
 import type { Environment, OrderRow, Shop } from './platform-data';
-import { contactEmail, equal, hmac, HttpError, requiredText, sendEmail, streetAddress, stripe } from './platform-services';
+import { rackEmailSummary, sendRequestEmail } from './platform-notifications';
+import { contactEmail, equal, hmac, HttpError, requestId, requiredText, sendEmail, streetAddress, stripe } from './platform-services';
 import type { Destination } from './platform-services';
 import { numberIn, record } from './platform-settings';
 
@@ -53,8 +55,7 @@ export function rackSnapshot(value: unknown, shop: Shop) {
 
 export async function requestOrder(env: Environment, shop: Shop, fields: Record<string, unknown>) {
   if (!env.QUOTE_SIGNING_SECRET) throw new HttpError(503, 'Order requests are temporarily unavailable.');
-  const id = requiredText(fields.id, 'the request ID', 36);
-  if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id)) throw new HttpError(400, 'Check the request ID.');
+  const id = requestId(fields.id);
   const customer = {
     name: requiredText(fields.name, 'your name', 100),
     email: contactEmail(fields.email),
@@ -69,25 +70,23 @@ export async function requestOrder(env: Environment, shop: Shop, fields: Record<
   const destination = streetAddress(address);
   const deliveryCents = await verifyQuote(shop, destination, fields.quoteToken, env.QUOTE_SIGNING_SECRET);
   const racks = rackSnapshot(fields.racks, shop);
-  const options = (await windowsQuery(env, shop)).results;
-  const ids = Array.isArray(fields.windows) ? fields.windows : [];
-  const windows = ids.map((id) => options.find((window) => window.id === id));
-  if (ids.length !== 3 || new Set(ids).size !== 3 || windows.some((window) => !window)) {
-    throw new HttpError(409, 'Choose three available delivery windows. Refresh the choices if a time has been taken.');
-  }
+  const windows = await requestedWindows(env, shop, fields.windows, true);
 
+  const totalCents = racks.reduce((sum, { price }) => sum + price.total * 100, deliveryCents);
   const snapshot: OrderSnapshot = {
     shopName: shop.settings.name,
     customer,
     address: { ...destination, unit: requiredText(address.unit, 'the unit', 60, true), notes: requiredText(address.notes, 'the delivery notes', 1000, true) },
-    windows: windows.filter((window) => window !== undefined),
+    windows,
     racks,
     deliveryCents,
-    totalCents: racks.reduce((sum, { price }) => sum + price.total * 100, deliveryCents),
+    totalCents,
     revision: shop.revision,
+    attribution: leadAttribution(fields),
+    payment: snapshotPayment(shop.settings.deposit, totalCents, racks),
   };
   const write = await env.DB.prepare(`
-    INSERT INTO orders (id, shop_id, snapshot) SELECT ?, ?, ?
+    INSERT INTO orders (id, shop_id, snapshot, request_email_status, receipt_email_status) SELECT ?, ?, ?, 'pending', 'pending'
     WHERE (SELECT revision FROM shops WHERE id = ?) = ?
     ON CONFLICT(id) DO NOTHING
   `).bind(id, shop.id, JSON.stringify(snapshot), shop.id, shop.revision).run();
@@ -96,10 +95,8 @@ export async function requestOrder(env: Environment, shop: Shop, fields: Record<
     if (existing && (JSON.parse(existing.snapshot) as OrderSnapshot).customer.email === customer.email) return { id };
     throw new HttpError(409, 'The storefront settings changed. Refresh the page and get a new estimate.');
   }
-  await sendEmail(env.RESEND_API_KEY, env.CONSULT_FROM_EMAIL, 'order-request-' + id, {
-    to: shop.settings.contactEmail, subject: 'New rack order request', reply_to: customer.email,
-    text: `${customer.name} requested ${racks.length} rack(s). Open Builder admin to review the order and delivery preferences.\n\nOrder ${id}`,
-  });
+  const row = await getOrder(env, shop, id);
+  await Promise.all([notifyOrderRequest(env, shop, row), notifyOrderRequest(env, shop, row, true)]);
   return { id };
 }
 
@@ -109,15 +106,45 @@ export async function getOrder(env: Environment, shop: Shop, id: string) {
   return order;
 }
 
-export async function confirmOrder(env: Environment, shop: Shop, id: string, windowId: string) {
+export async function notifyOrderRequest(env: Environment, shop: Shop, row: OrderRow, receipt = false) {
+  const { id, snapshot } = orderData(row);
+  const { customer, racks, deliveryCents, totalCents, shopName } = snapshot;
+  await sendRequestEmail(env, shop, receipt ? {
+    id, table: 'orders', column: 'receipt_email_status', status: row.receiptEmailStatus, key: 'order-receipt-' + id,
+    message: {
+      to: customer.email, reply_to: shop.settings.contactEmail || undefined, subject: `Order request received by ${shopName}`,
+      text: `Thanks, ${customer.name}. ${row.quoteInquiryId ? 'Your quote was accepted. Your builder will contact you to schedule delivery.' : 'Your builder will review your delivery preferences and follow up about payment.'}\n\n${rackEmailSummary(racks)}\nDelivery: $${(deliveryCents / 100).toFixed(2)}\n${row.quoteInquiryId ? 'Accepted' : 'Estimated'} total: $${(totalCents / 100).toFixed(2)}\n\nOrder reference: ${id.slice(0, 8).toUpperCase()}`,
+    },
+  } : {
+    id, table: 'orders', column: 'request_email_status', status: row.requestEmailStatus, key: 'order-request-' + id,
+    message: {
+      to: shop.settings.contactEmail, subject: 'New rack order request', reply_to: customer.email,
+      text: `${customer.name} requested ${racks.length} rack(s). Open Builder admin to review the order and delivery preferences.\n\nOrder ${id}`,
+    },
+  });
+}
+
+export async function confirmOrder(env: Environment, shop: Shop, id: string, windowId: string, online = false) {
   const row = await getOrder(env, shop, id);
   if (row.confirmedWindow === windowId) return row;
-  if (row.status !== 'requested' || !orderData(row).snapshot.windows.some((window) => window.id === windowId)) {
+  const { snapshot } = orderData(row);
+  if (row.status !== 'requested' || (!row.quoteInquiryId && !snapshot.windows.some((window) => window.id === windowId))) {
     throw new HttpError(409, 'This delivery window cannot be confirmed for the order.');
   }
+  const cardAvailable = checkoutMode(env) !== 'off';
+  if (online && (!cardAvailable || snapshot.payment?.depositCents || snapshot.totalCents === 0 || row.recordedPaymentCents > 0)) {
+    throw new HttpError(409, 'Online prepayment is unavailable for this order.');
+  }
+  const paymentToken = cardAvailable && (online || !snapshot.payment) ? crypto.randomUUID() : null;
+  const quoteWindow = row.quoteInquiryId ? await env.DB.prepare(`SELECT id, date, start, end FROM delivery_windows WHERE shop_id = ? AND id = ?`)
+    .bind(shop.id, windowId).first<DeliveryWindow>() : null;
+  if (row.quoteInquiryId && !quoteWindow) throw new HttpError(409, 'Choose a delivery window from this shop.');
+  const bookedWindows = quoteWindow && !snapshot.windows.some((window) => window.id === windowId)
+    ? [...snapshot.windows, quoteWindow] : snapshot.windows;
   const { date, time } = shopClock(shop.settings.timezone);
   const result = await env.DB.prepare(`
-    UPDATE orders SET status = 'confirmed', confirmed_window = ?, payment_token = ?
+    UPDATE orders SET status = 'confirmed', confirmed_window = ?, payment_token = ?,
+      snapshot = CASE WHEN quote_inquiry_id IS NOT NULL THEN json_set(snapshot, '$.windows', json(?)) ELSE snapshot END
     WHERE id = ? AND shop_id = ? AND status = 'requested'
       AND (SELECT revision FROM shops WHERE id = ?) = ?
       AND EXISTS (SELECT 1 FROM delivery_windows w
@@ -126,7 +153,9 @@ export async function confirmOrder(env: Environment, shop: Shop, id: string, win
           AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.confirmed_window = w.id)
           AND (SELECT COUNT(*) FROM orders o JOIN delivery_windows used ON used.id = o.confirmed_window
             WHERE o.shop_id = w.shop_id AND used.week = w.week) < ?)
-  `).bind(windowId, crypto.randomUUID(), id, shop.id, shop.id, shop.revision, windowId, shop.id, date, date, time, shop.settings.delivery.weeklyCapacity).run();
+      AND (? IS NULL OR NOT EXISTS (SELECT 1 FROM order_payments p WHERE p.shop_id = orders.shop_id AND p.order_id = orders.id))
+  `).bind(windowId, paymentToken, JSON.stringify(bookedWindows), id, shop.id, shop.id, shop.revision,
+    windowId, shop.id, date, date, time, shop.settings.delivery.weeklyCapacity, paymentToken).run();
   const saved = await getOrder(env, shop, id);
   if (!result.meta.changes && saved.confirmedWindow !== windowId) {
     throw new HttpError(409, 'That delivery window is past, closed, booked, or its week is at capacity.');
@@ -140,9 +169,14 @@ export async function sendConfirmation(env: Environment, shop: Shop, row: OrderR
   const window = snapshot.windows.find(({ id }) => id === row.confirmedWindow);
   if (!window) throw new HttpError(409, 'Confirm a delivery window first.');
   const mode = checkoutMode(env);
-  const payment = mode === 'off'
-    ? '\nYour builder will follow up about payment.'
-    : `\n${mode === 'test' ? 'Test checkout (no real charge)' : 'Pay securely'}: ${origin}/pay/${row.paymentToken}`;
+  const depositCents = snapshot.payment?.depositCents ?? 0;
+  const remainingDeposit = Math.max(0, depositCents - row.recordedPaymentCents);
+  const remainingBalance = snapshot.totalCents - row.recordedPaymentCents - remainingDeposit;
+  const payment = row.paymentToken && mode !== 'off'
+    ? `\n${mode === 'test' ? 'Test checkout (no real charge)' : 'Pay securely'}: ${origin}/pay/${row.paymentToken}`
+    : remainingDeposit > 0
+      ? `\nDeposit due: $${(remainingDeposit / 100).toFixed(2)}. Your builder will provide payment instructions.\nRemaining after deposit: $${(remainingBalance / 100).toFixed(2)}.`
+      : `\nBalance due at delivery: $${(remainingBalance / 100).toFixed(2)}.`;
   const result = await sendEmail(env.RESEND_API_KEY, env.CONSULT_FROM_EMAIL, 'order-confirmed-' + row.id, {
     to: snapshot.customer.email, subject: `Delivery confirmed by ${shop.settings.name}`,
     reply_to: shop.settings.contactEmail || undefined,

@@ -1,5 +1,7 @@
 import { defaultShop } from '../src/config/shop';
 import type { AdminSettings, ShopSettings } from '../src/config/shop';
+import { depositModes, depositTriggers } from '../src/config/payments';
+import type { DepositPolicy } from '../src/config/payments';
 import { contactEmail, HttpError, requiredText } from './platform-services';
 
 export function readSettings(stored: string, origin = '', email = ''): AdminSettings {
@@ -21,6 +23,19 @@ export function numberIn(value: unknown, label: string, min: number, max: number
   return value;
 }
 
+function depositSettings(input: unknown): DepositPolicy {
+  const { mode, trigger, fixedCents, percent, thresholdCents } = record(input);
+  if (typeof mode !== 'string' || !Object.hasOwn(depositModes, mode) || typeof trigger !== 'string' || !Object.hasOwn(depositTriggers, trigger)) {
+    throw new HttpError(400, 'Choose a deposit method and trigger.');
+  }
+  return {
+    mode: mode as DepositPolicy['mode'], trigger: trigger as DepositPolicy['trigger'],
+    fixedCents: numberIn(fixedCents, 'the fixed deposit', mode === 'fixed' ? 1 : 0, 10_000_000),
+    percent: numberIn(percent, 'the deposit percentage', 1, 100),
+    thresholdCents: numberIn(thresholdCents, 'the deposit order threshold', 0, 10_000_000),
+  };
+}
+
 export function validateSettings(input: unknown, current: AdminSettings): AdminSettings {
   const fields = record(input);
   const rates = record(fields.rates);
@@ -40,7 +55,11 @@ export function validateSettings(input: unknown, current: AdminSettings): AdminS
     name: requiredText(fields.name, 'the shop name', 80),
     title: requiredText(fields.title, 'the storefront headline', 120),
     description: requiredText(fields.description, 'the storefront description', 400),
+    serviceArea: requiredText(fields.serviceArea ?? current.serviceArea, 'the service area', 100),
+    buildLeadTime: requiredText(fields.buildLeadTime ?? current.buildLeadTime, 'the approximate lead time', 100, true),
+    publicEmail: contactEmail(fields.publicEmail ?? current.publicEmail, true),
     accent,
+    deposit: fields.deposit === undefined ? current.deposit : depositSettings(fields.deposit),
     timezone: current.timezone,
     contactEmail: contactEmail(fields.contactEmail, true),
     deliveryOrigin: requiredText(fields.deliveryOrigin, 'the routing origin', 240, true),

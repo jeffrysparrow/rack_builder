@@ -16,7 +16,7 @@ export interface RackConfiguration {
 }
 
 export const defaultConfiguration: RackConfiguration = {
-  columns: 4, rows: 4, binType: 'hdx-27', includeBins: true,
+  columns: 4, rows: 4, binType: deliveryToteType, includeBins: true,
   includeCasters: true, includeTotesWithDelivery: false, topMaterial: 'standard-plywood',
 };
 

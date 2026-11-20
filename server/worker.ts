@@ -1,16 +1,17 @@
-import type { DeliveryWindow, SavedInquiry, Storefront } from '../src/config/shop';
-import { toteProfiles } from '../src/config/totes';
-import { getRackToteType } from '../src/config/rack';
-import { inquiryData, orderColumns, orderData, shopClock, windowsQuery } from './platform-data';
-import type { Environment, OrderRow, Shop } from './platform-data';
-import { beginCheckout, confirmOrder, createQuote, getOrder, checkoutMode, rackSnapshot, requestOrder, sendConfirmation, stripeWebhook } from './platform-orders';
-import { accessEmail, contactEmail, equal, HttpError, requiredText, routeFee, sendEmail, streetAddress } from './platform-services';
+import type { DeliveryWindow, Storefront } from '../src/config/shop';
+import { analyticsSummary, recordBrowserEvent } from './platform-analytics';
+import { inquiryColumns, inquiryData, orderColumns, orderData, shopClock, windowsQuery } from './platform-data';
+import type { Environment, InquiryRow, OrderRow, Shop } from './platform-data';
+import { consult, getInquiry, notifyInquiry, requestRackQuote } from './platform-inquiries';
+import { acceptOffer, emailOffer, issueOffer, latestOffers, publicOffer } from './platform-offers';
+import { beginCheckout, confirmOrder, createQuote, getOrder, checkoutMode, notifyOrderRequest, requestOrder, sendConfirmation, stripeWebhook } from './platform-orders';
+import { cancelOrder, completeOrder, orderPayments, recordPayment } from './platform-payments';
+import { addReview, adminReviews, setReviewSource, setReviewVisibility, storefrontReviews } from './platform-reviews';
+import { accessEmail, equal, HttpError, requiredText, routeFee, streetAddress } from './platform-services';
 import { publicSettings, readSettings, record, validateSettings } from './platform-settings';
 
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 const loopback = (hostname: string) => ['localhost', '127.0.0.1', '[::1]'].includes(hostname);
-type InquiryRow = Omit<SavedInquiry, 'snapshot'> & { snapshot: string };
-const inquiryColumns = 'id, created_at AS createdAt, snapshot, email_status AS emailStatus';
 
 async function readBody(request: Request, limit: number) {
   if (!request.headers.get('Content-Type')?.toLowerCase().startsWith('application/json')) {
@@ -44,13 +45,20 @@ async function identifyShop(env: Environment, hostname: string): Promise<Shop> {
 const storefrontOrigin = (shop: Shop, url: URL) => loopback(url.hostname) ? url.origin : 'https://' + shop.canonicalHostname;
 
 async function authorize(request: Request, env: Environment, shop: Shop, url: URL) {
-  if (loopback(url.hostname) && env.LOCAL_ADMIN_TOKEN && equal(request.headers.get('Authorization') ?? '', 'Bearer ' + env.LOCAL_ADMIN_TOKEN)) return;
+  if (loopback(url.hostname)) {
+    if (!env.LOCAL_ADMIN_TOKEN) throw new HttpError(503, 'Set LOCAL_ADMIN_TOKEN in the local Worker to open Builder admin.');
+    const authorization = request.headers.get('Authorization');
+    if (!authorization) throw new HttpError(401, 'Enter the local development token to open Builder admin.');
+    if (!equal(authorization, 'Bearer ' + env.LOCAL_ADMIN_TOKEN)) throw new HttpError(401, 'That local development token is incorrect.');
+    return 'local-builder';
+  }
   const token = request.headers.get('Cf-Access-Jwt-Assertion');
   const email = token && env.ACCESS_ISSUER && env.ACCESS_AUDIENCE && await accessEmail(token, env.ACCESS_ISSUER, env.ACCESS_AUDIENCE);
   if (!email) throw new HttpError(401, 'Sign in through Cloudflare Access to open Builder admin.');
-  if (shop.id === 'toteworks-atx' && email === env.SHOP_OWNER_EMAIL?.trim().toLowerCase()) return;
+  if (shop.id === 'toteworks-atx' && email === env.SHOP_OWNER_EMAIL?.trim().toLowerCase()) return email;
   const member = await env.DB.prepare('SELECT 1 FROM shop_members WHERE shop_id = ? AND email = ?').bind(shop.id, email).first();
   if (!member) throw new HttpError(403, 'You do not have access to this shop.');
+  return email;
 }
 
 async function addWindow(env: Environment, shop: Shop, fields: Record<string, unknown>) {
@@ -76,51 +84,25 @@ async function addWindow(env: Environment, shop: Shop, fields: Record<string, un
   return window;
 }
 
-async function notifyInquiry(env: Environment, shop: Shop, row: InquiryRow) {
-  if (row.emailStatus === 'sent') return inquiryData(row);
-  const { email, phone, details, configuration } = inquiryData(row).snapshot;
-  const status = await sendEmail(env.RESEND_API_KEY, env.CONSULT_FROM_EMAIL, 'inquiry-' + row.id, {
-    to: shop.settings.contactEmail,
-    reply_to: email, subject: 'New custom rack inquiry',
-    text: `Email: ${email}\nPhone: ${phone}\n\n${details}\n\n${configuration}`,
-  });
-  await env.DB.prepare(`UPDATE inquiries SET email_status = ? WHERE shop_id = ? AND id = ? AND email_status != 'sent'`).bind(status, shop.id, row.id).run();
-  const saved = await env.DB.prepare(`SELECT ${inquiryColumns} FROM inquiries WHERE shop_id = ? AND id = ?`).bind(shop.id, row.id).first<InquiryRow>();
-  return inquiryData(saved!);
-}
-
-async function consult(env: Environment, shop: Shop, fields: Record<string, unknown>) {
-  if (fields.website) return { sent: true };
-  const snapshot: SavedInquiry['snapshot'] = {
-    email: contactEmail(fields.email),
-    phone: requiredText(fields.phone, 'your phone number', 40),
-    details: requiredText(fields.details, 'your rack details', 2000),
-    configuration: rackSnapshot(fields.racks, shop).map(({ configuration, price }, index) =>
-      `Rack ${index + 1} · ${configuration.columns} × ${configuration.rows} · ${toteProfiles[getRackToteType(configuration)].label} · $${price.total}`).join('\n'),
-  };
-  const id = crypto.randomUUID();
-  await env.DB.prepare('INSERT INTO inquiries (id, shop_id, snapshot) VALUES (?, ?, ?)').bind(id, shop.id, JSON.stringify(snapshot)).run();
-  await notifyInquiry(env, shop, { id, createdAt: '', snapshot: JSON.stringify(snapshot), emailStatus: 'pending' });
-  return { sent: true };
-}
-
 async function admin(request: Request, env: Environment, shop: Shop, url: URL) {
-  await authorize(request, env, shop, url);
+  const actor = await authorize(request, env, shop, url);
   const { pathname } = url;
   const db = env.DB;
   const method = request.method;
   if (method === 'GET' && pathname === '/api/admin') {
     const { date } = shopClock(shop.settings.timezone);
-    const [orders, inquiries, windows] = await Promise.all([
+    const [orders, inquiries, windows, offers, payments, availability, analytics, reviews] = await Promise.all([
       db.prepare(`SELECT ${orderColumns} FROM orders WHERE shop_id = ? ORDER BY created_at DESC, id LIMIT 100`).bind(shop.id).all<OrderRow>(),
       db.prepare(`SELECT ${inquiryColumns} FROM inquiries WHERE shop_id = ? ORDER BY created_at DESC, id LIMIT 100`).bind(shop.id).all<InquiryRow>(),
       db.prepare(`SELECT w.id, w.date, w.start, w.end, w.enabled, o.id AS orderId FROM delivery_windows w
         LEFT JOIN orders o ON o.confirmed_window = w.id WHERE w.shop_id = ? AND w.date >= ? ORDER BY w.date, w.start LIMIT 200`)
         .bind(shop.id, date).all<DeliveryWindow>(),
+      latestOffers(env, shop), orderPayments(env, shop), windowsQuery(env, shop), analyticsSummary(env, shop), adminReviews(env, shop),
     ]);
     return json({
       settings: shop.settings, revision: shop.revision, orders: orders.results.map(orderData), inquiries: inquiries.results.map(inquiryData),
       windows: windows.results, today: date, checkout: checkoutMode(env), paymentOrigin: storefrontOrigin(shop, url),
+      offers, payments, availableWindows: availability.results, analytics, reviews,
       deliveryReady: Boolean(shop.settings.deliveryOrigin && env.GOOGLE_MAPS_API_KEY && env.QUOTE_SIGNING_SECRET),
       emailReady: Boolean(shop.settings.contactEmail && env.RESEND_API_KEY && env.CONSULT_FROM_EMAIL),
     });
@@ -135,6 +117,9 @@ async function admin(request: Request, env: Environment, shop: Shop, url: URL) {
     return json({ settings, revision: shop.revision + 1 });
   }
   if (method !== 'POST') throw new HttpError(405, 'This method is unavailable.');
+  if (pathname === '/api/admin/reviews') return json(await addReview(env, shop, fields), 201);
+  if (pathname === '/api/admin/reviews/source') return json(await setReviewSource(env, shop, fields));
+  if (pathname === '/api/admin/reviews/visibility') return json(await setReviewVisibility(env, shop, fields));
   if (pathname === '/api/admin/windows') return json(await addWindow(env, shop, fields), 201);
   if (pathname === '/api/admin/windows/close') {
     const id = requiredText(fields.id, 'the window', 36);
@@ -144,19 +129,43 @@ async function admin(request: Request, env: Environment, shop: Shop, url: URL) {
     return json({ closed: true });
   }
   const id = requiredText(fields.id, 'the reference ID', 36);
-  if (pathname === '/api/admin/inquiries/retry-email') {
-    const row = await db.prepare(`SELECT ${inquiryColumns} FROM inquiries WHERE shop_id = ? AND id = ?`).bind(shop.id, id).first<InquiryRow>();
+  if (pathname === '/api/admin/inquiries/offer') return json(await issueOffer(env, shop, id, fields), 201);
+  if (pathname === '/api/admin/inquiries/email-offer') return json(await emailOffer(env, shop, id, storefrontOrigin(shop, url)));
+  if (pathname === '/api/admin/orders/payment') return json(await recordPayment(env, shop, id, fields, actor));
+  if (pathname === '/api/admin/orders/complete') return json(await completeOrder(env, shop, id));
+  if (pathname === '/api/admin/orders/cancel') return json(await cancelOrder(env, shop, id));
+  if (pathname === '/api/admin/inquiries/qualify' || pathname === '/api/admin/orders/qualify') {
+    if (typeof fields.qualified !== 'boolean') throw new HttpError(400, 'Choose a lead status.');
+    const sourceQuote = pathname === '/api/admin/orders/qualify' ? (await getOrder(env, shop, id)).quoteInquiryId : null;
+    const table = sourceQuote || pathname === '/api/admin/inquiries/qualify' ? 'inquiries' : 'orders';
+    const result = await db.prepare(`UPDATE ${table} SET qualified = ? WHERE shop_id = ? AND id = ?`)
+      .bind(Number(fields.qualified), shop.id, sourceQuote ?? id).run();
+    if (!result.meta.changes) throw new HttpError(404, 'Request not found.');
+    return json({ qualified: fields.qualified });
+  }
+  if (pathname === '/api/admin/inquiries/retry-email' || pathname === '/api/admin/inquiries/retry-receipt') {
+    const row = await getInquiry(env, shop, id);
     if (!row) throw new HttpError(404, 'Inquiry not found.');
-    return json(await notifyInquiry(env, shop, row));
+    const receipt = pathname.endsWith('/retry-receipt');
+    await notifyInquiry(env, shop, row, receipt);
+    const saved = await getInquiry(env, shop, id);
+    if (!saved) throw new HttpError(404, 'Inquiry not found.');
+    return json(receipt ? { emailStatus: saved.receiptEmailStatus } : inquiryData(saved));
+  }
+  if (pathname === '/api/admin/orders/retry-alert' || pathname === '/api/admin/orders/retry-receipt') {
+    const receipt = pathname.endsWith('/retry-receipt');
+    await notifyOrderRequest(env, shop, await getOrder(env, shop, id), receipt);
+    const saved = await getOrder(env, shop, id);
+    return json({ emailStatus: receipt ? saved.receiptEmailStatus : saved.requestEmailStatus });
   }
   if (pathname === '/api/admin/orders/decline') {
-    const result = await db.prepare(`UPDATE orders SET status = 'declined' WHERE shop_id = ? AND id = ? AND status = 'requested'`).bind(shop.id, id).run();
+    const result = await db.prepare(`UPDATE orders SET status = 'declined' WHERE shop_id = ? AND id = ? AND status = 'requested' AND quote_inquiry_id IS NULL`).bind(shop.id, id).run();
     if (!result.meta.changes) throw new HttpError(409, 'Only pending orders can be declined.');
     return json(orderData(await getOrder(env, shop, id)));
   }
   if (pathname === '/api/admin/orders/confirm' || pathname === '/api/admin/orders/retry-email') {
     const row = pathname.endsWith('/confirm')
-      ? await confirmOrder(env, shop, id, requiredText(fields.window, 'the delivery window', 36))
+      ? await confirmOrder(env, shop, id, requiredText(fields.window, 'the delivery window', 36), fields.online === true)
       : await getOrder(env, shop, id);
     return json(await sendConfirmation(env, shop, row, storefrontOrigin(shop, url)));
   }
@@ -172,8 +181,11 @@ async function api(request: Request, env: Environment, url: URL) {
   if (pathname === '/api/admin' || pathname.startsWith('/api/admin/')) return admin(request, env, shop, url);
   const deliveryAvailable = Boolean(shop.settings.deliveryOrigin && env.GOOGLE_MAPS_API_KEY && env.QUOTE_SIGNING_SECRET);
   const requestsAvailable = Boolean((env.ACCESS_ISSUER && env.ACCESS_AUDIENCE) || (loopback(url.hostname) && env.LOCAL_ADMIN_TOKEN));
+  const offerToken = pathname.match(/^\/api\/offers\/([^/]+)$/)?.[1];
+  if (method === 'GET' && offerToken) return json(await publicOffer(env, shop, offerToken));
   if (method === 'GET' && pathname === '/api/shop') {
-    return json({ settings: publicSettings(shop.settings), revision: shop.revision, deliveryAvailable, consultAvailable: requestsAvailable } satisfies Storefront);
+    return json({ settings: publicSettings(shop.settings), revision: shop.revision, deliveryAvailable, consultAvailable: requestsAvailable,
+      reviews: await storefrontReviews(env, shop), shareOrigin: storefrontOrigin(shop, url) } satisfies Storefront);
   }
   if (method === 'GET' && pathname === '/api/delivery-windows') {
     return json({ windows: requestsAvailable ? (await windowsQuery(env, shop)).results : [] });
@@ -187,6 +199,11 @@ async function api(request: Request, env: Environment, url: URL) {
     throw new HttpError(429, 'Too many requests. Wait a minute and try again.');
   }
   const fields = record(JSON.parse(await readBody(request, 16000)));
+  if (offerToken && fields.accepted === true) return json(await acceptOffer(env, shop, offerToken), 201);
+  if (pathname === '/api/analytics') {
+    await recordBrowserEvent(env, shop, fields);
+    return new Response(null, { status: 204 });
+  }
   if (pathname === '/api/delivery-quote') {
     if (!deliveryAvailable || !env.GOOGLE_MAPS_API_KEY || !env.QUOTE_SIGNING_SECRET) throw new HttpError(503, 'Delivery quotes are unavailable.');
     if (fields.revision !== shop.revision) throw new HttpError(409, 'The storefront settings changed. Refresh the page for current pricing.');
@@ -194,10 +211,11 @@ async function api(request: Request, env: Environment, url: URL) {
     const feeCents = await routeFee(destination, shop.settings, env.GOOGLE_MAPS_API_KEY);
     return json({ feeCents, token: await createQuote(shop, destination, feeCents, env.QUOTE_SIGNING_SECRET) });
   }
-  if (!requestsAvailable && (pathname === '/api/consult' || pathname === '/api/orders')) {
+  if (!requestsAvailable && (pathname === '/api/consult' || pathname === '/api/orders' || pathname === '/api/quotes')) {
     throw new HttpError(503, 'Online requests are temporarily unavailable.');
   }
   if (pathname === '/api/consult') return json(await consult(env, shop, fields), 201);
+  if (pathname === '/api/quotes') return json(await requestRackQuote(env, shop, fields), 201);
   if (pathname === '/api/orders') return json(await requestOrder(env, shop, fields), 201);
   if (pathname === '/api/checkout') {
     const result = await beginCheckout(env, shop, requiredText(fields.token, 'the payment link', 36), storefrontOrigin(shop, url));
@@ -214,7 +232,15 @@ export default {
         if (!loopback(url.hostname)) await authorize(request, env, await identifyShop(env, url.hostname), url);
       }
       if (url.pathname.startsWith('/api/')) return await api(request, env, url);
-      return await env.ASSETS.fetch(request);
+      const response = await env.ASSETS.fetch(request);
+      if (/^\/(?:admin(?:\/|$)|quote\/|pay\/|order-received(?:\/|$))/.test(url.pathname)) {
+        const headers = new Headers(response.headers);
+        headers.set('X-Robots-Tag', 'noindex, nofollow');
+        headers.set('Referrer-Policy', 'no-referrer');
+        headers.set('Cache-Control', 'no-store');
+        return new Response(response.body, { status: response.status, headers });
+      }
+      return response;
     } catch (error) {
       if (error instanceof HttpError) return json({ error: error.message }, error.status);
       if (error instanceof SyntaxError) return json({ error: 'Check the submitted fields.' }, 400);

@@ -201,12 +201,27 @@ body:has(.delivery-dialog[open]) { overflow: hidden; }
   border-radius: .54rem; text-decoration: none; text-align: center;
 }
 .delivery-next:hover { background: #273d2b; }
+.estimate-actions .delivery-edit { border: 1px solid var(--accent); background: transparent; color: var(--accent); }
+.estimate-actions .delivery-edit:hover { background: #e9eee4; }
 .store-section {
   min-width: 0; padding: clamp(1.1rem, 2.5vw, 1.8rem);
   border: 1px solid var(--line); border-radius: 1rem; background: #fdfcf9;
 }
 .store-section-heading h2 { font: 500 clamp(1.65rem, 2.5vw, 2.35rem)/1.05 Georgia, serif; letter-spacing: -.043em; }
 .store-section p { margin: .7rem 0 0; color: var(--muted); line-height: 1.55; }
+.quote-section { margin-top: 1rem; }
+.quote-section .quote-estimate, .quote-section strong { color: var(--ink); }
+.quote-section > .delivery-edit { margin-top: 1rem; }
+.order-trust { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem 1rem; margin: .9rem 0 1.2rem; padding: .8rem 0; border-block: 1px solid var(--line); max-width: 48rem; }
+.order-trust dt { font-size: .875rem; font-weight: 700; }
+.order-trust dd { margin: .25rem 0 0; color: var(--muted); font-size: .875rem; line-height: 1.45; overflow-wrap: anywhere; }
+.order-preferences { min-width: 0; margin: .3rem 0 0; padding: .65rem .8rem .8rem; border: 1px solid var(--line); border-radius: .5rem; }
+.order-preferences legend { padding: 0 .25rem; font-weight: 680; }
+.order-preferences small { color: var(--muted); font-weight: 400; }
+.order-preference-fields { display: grid; gap: .55rem; margin-top: .6rem; }
+.order-preference-fields select { width: 100%; }
+.checkout-delivery-note .nav-delivery, .order-preferences .nav-delivery { display: inline-block; margin-top: .2rem; text-decoration: underline; }
+@media (max-width: 530px) { .order-trust { grid-template-columns: 1fr; } }
 .consult-section { margin-top: 1rem; background: #edf1e8; border-color: #d7dfd1; }
 .consult-form { display: grid; gap: .75rem; max-width: 43rem; margin-top: .85rem; }
 .consult-contact { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
@@ -225,10 +240,10 @@ body:has(.delivery-dialog[open]) { overflow: hidden; }
 .reviews-section { margin-top: 1rem; }
 .review-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: .8rem; margin-top: .85rem; }
 .review-card { margin: 0; padding: 1rem; border: 1px solid var(--line); border-radius: .65rem; }
-.review-card blockquote { margin: .55rem 0; line-height: 1.5; }
+.review-card blockquote { margin: .55rem 0; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .review-card figcaption { font-size: .875rem; color: var(--muted); }
+.review-card figcaption strong { display: block; color: var(--ink); }
 .review-stars { color: #775016; font-size: 1.15rem; letter-spacing: .07em; }
-.reviews-section > .text-link { display: block; margin-top: .75rem; }
 .cut-list summary { font-weight: 700; cursor: pointer; }
 @media (max-width: 760px) {
   .intro-copy { flex-basis: 100%; }
@@ -236,7 +251,7 @@ body:has(.delivery-dialog[open]) { overflow: hidden; }
 
 @media (max-width: 440px) { .consult-contact { grid-template-columns: 1fr; } }
 
-.delivery-field select { font: inherit; border: 1px solid #bdc8b9; border-radius: .5rem; padding: .65rem .7rem; background: #fff; color: inherit; min-width: 0; }
+.delivery-field select { display: block; max-width: 100%; margin-top: .3rem; font: inherit; border: 1px solid #bdc8b9; border-radius: .5rem; padding: .65rem .7rem; background: #fff; color: inherit; min-width: 0; }
 .schedule-option { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: .65rem; }
 .delivery-request { border-top: 1px solid #dce3d9; padding-top: .85rem; margin-top: .3rem; }
 .delivery-request h3 { margin: 0 0 .55rem; }
@@ -248,7 +263,7 @@ body:has(.delivery-dialog[open]) { overflow: hidden; }
 .admin-heading { display: flex; justify-content: space-between; align-items: end; gap: 1rem; padding: 1rem 0 1.25rem; }
 .admin-heading h1 { margin: .45rem 0 .25rem; font-size: clamp(2rem, 5vw, 3.1rem); }
 .admin-heading p { margin: 0; color: #505a50; }
-.admin-nav { display: flex; gap: .4rem; padding: .2rem 0; border-bottom: 1px solid #d8e0d5; margin-bottom: 1rem; }
+.admin-nav { display: flex; flex-wrap: wrap; gap: .4rem; padding: .2rem 0; border-bottom: 1px solid #d8e0d5; margin-bottom: 1rem; }
 .admin-nav button { padding: .65rem 1rem; border: 0; border-radius: .5rem; background: transparent; color: inherit; font: inherit; font-weight: 650; cursor: pointer; }
 .admin-nav button[aria-current=page] { color: white; background: var(--accent); }
 .admin-content { margin: 0; padding: 0; min-width: 0; border: 0; }
@@ -266,6 +281,51 @@ body:has(.delivery-dialog[open]) { overflow: hidden; }
 .admin-record summary { cursor: pointer; }
 .admin-record summary span { margin-left: .65rem; color: #505a50; }
 .admin-order-detail { padding: .55rem 0 0 1rem; }
+.admin-lead-filter { margin-bottom: 1rem; }
+.admin-lead { margin: 1rem 0; }
+.admin-lead dl { font-size: .875rem; margin: .5rem 0; }
+.admin-lead dl div { display: grid; grid-template-columns: minmax(7.5rem, auto) 1fr; gap: .5rem; margin: .3rem 0; }
+.admin-lead dt { font-weight: 650; }
+.admin-lead dd { margin: 0; }
+.admin-request-email { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+.admin-request-email .delivery-edit { margin-top: 0; padding: .35rem .55rem; }
+.admin-workflow { border-top: 1px solid var(--line); padding: .8rem 0; margin: .8rem 0; }
+.admin-workflow summary { width: fit-content; font-weight: 650; }
+.admin-workflow .delivery-form { margin-bottom: .75rem; }
+.admin-amounts { display: grid; gap: .4rem; margin: .55rem 0 .85rem; max-width: 29rem; }
+.admin-amounts div { display: flex; justify-content: space-between; gap: .75rem; }
+.admin-amounts dd { margin: 0; font-weight: 670; }
+.payment-history { padding-left: 1.15rem; line-height: 1.5; }
+.admin-table-scroll { overflow-x: auto; }
+.customer-offer > .text-link { display: inline-block; margin-bottom: .8rem; }
+.customer-offer h1 { font-size: clamp(2rem, 6vw, 3.4rem); }
+.customer-offer-racks { list-style: none; padding: 0; margin: 1.1rem 0; }
+.customer-offer-racks li { padding: .6rem 0; border-top: 1px solid var(--line); }
+.customer-offer-racks p { margin-top: .2rem; }
+.customer-offer .price-lines { margin: 1.05rem 0; }
+
+.photo-page { max-width: 1260px; }
+.photo-hero { display: grid; grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr); align-items: center; gap: clamp(1.2rem, 4vw, 4rem); }
+.photo-hero h1 { max-width: 13ch; }
+.photo-hero p { color: var(--muted); line-height: 1.6; margin: 1rem 0 1.15rem; max-width: 39ch; }
+.photo-hero .delivery-action { display: inline-block; text-decoration: none; }
+.photo-hero img { display: block; width: 100%; height: auto; border-radius: .9rem; border: 1px solid var(--line); }
+.photo-examples { margin: 2rem 0; }
+.photo-examples h2, .photo-faq h2 { font: 500 clamp(1.65rem, 3vw, 2.35rem)/1.1 Georgia, serif; letter-spacing: -.035em; margin: 0 0 1rem; }
+.photo-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.photo-card { margin: 0; min-width: 0; }
+.photo-card a { display: block; border-radius: .7rem; overflow: hidden; background: #e9e9e0; }
+.photo-card img { display: block; width: 100%; aspect-ratio: 4 / 3; height: auto; object-fit: cover; }
+.photo-card figcaption { margin-top: .5rem; font-weight: 650; font-size: .95rem; }
+.photo-faq-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.1rem 1.6rem; }
+.photo-faq h3 { margin: 0; font-size: 1rem; }
+.photo-faq p { margin-top: .35rem; }
+.photo-faq .text-link, .storefront-photos .text-link { display: inline-block; margin-top: 1rem; }
+.storefront-photos { margin-top: 1rem; }
+.storefront-photos .photo-grid { margin-top: .85rem; }
+@media (max-width: 960px) { .photo-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 720px) { .photo-hero { grid-template-columns: 1fr; } }
+@media (max-width: 580px) { .photo-grid, .photo-faq-grid { grid-template-columns: 1fr; } }
 .admin-feedback { padding: .7rem .85rem; background: #e9eee4; border-radius: .45rem; }
 .admin-error { background: #ffece7; color: #7d2917; }
 .admin-notes { white-space: pre-wrap; overflow-wrap: anywhere; }

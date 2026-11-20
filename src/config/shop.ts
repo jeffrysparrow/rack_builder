@@ -1,16 +1,26 @@
 import { rackRates } from './pricing';
-import { defaultBuildRules } from './rack';
+import { defaultBuildRules, finishes, getRackToteType } from './rack';
+import { toteProfiles } from './totes';
+import type { LeadAttribution } from './attribution';
+import { defaultDeposit, depositForOrder } from './payments';
+import type { DepositPolicy } from './payments';
+import type { CustomerReview } from './reviews';
 
 export const MAX_ORDER_RACKS = 20;
+export const MAX_DELIVERY_PREFERENCES = 3;
 
 export const defaultShop = {
   name: 'ToteWorks ATX',
   title: 'Custom wooden tote racks',
   description: 'Get your garage or shed organized with a rack sized for your 27-gallon totes. Keep it open or add a solid top for a work surface.',
+  serviceArea: 'Austin and nearby areas',
+  buildLeadTime: '',
+  publicEmail: '',
   accent: '#344b37',
   rates: rackRates,
   build: defaultBuildRules,
   delivery: { freeMiles: 15, extraMileRate: 2, weeklyCapacity: 4 },
+  deposit: defaultDeposit,
   timezone: 'America/Chicago',
 };
 
@@ -21,6 +31,8 @@ export type Storefront = {
   revision: number;
   deliveryAvailable: boolean;
   consultAvailable: boolean;
+  reviews: CustomerReview[];
+  shareOrigin?: string;
 };
 
 export interface DeliveryWindow {
@@ -60,19 +72,40 @@ export interface Customer {
   phone: string;
 }
 
+export interface SavedRack {
+  configuration: import('./rack').RackConfiguration;
+  cuts: ReturnType<typeof import('./rack').calculateCutList>;
+  price: ReturnType<typeof import('./pricing').estimatePrice>;
+}
+
+export function describeRack({ configuration, price }: Pick<SavedRack, 'configuration' | 'price'>) {
+  const top = finishes.find(({ id }) => id === configuration.topMaterial)?.label;
+  return [
+    `${configuration.columns} wide × ${configuration.rows} high`,
+    `Fits ${toteProfiles[getRackToteType(configuration)].label}`,
+    top,
+    price.wheelQuantity ? `${price.wheelQuantity} casters` : 'No casters',
+    price.toteQuantity ? `${price.toteQuantity} totes included` : 'No totes included',
+  ].join(' · ');
+}
+
 export interface OrderSnapshot {
   shopName: string;
   customer: Customer;
   address: { street: string; unit: string; city: string; state: string; zip: string; notes: string };
   windows: DeliveryWindow[];
-  racks: {
-    configuration: import('./rack').RackConfiguration;
-    cuts: ReturnType<typeof import('./rack').calculateCutList>;
-    price: ReturnType<typeof import('./pricing').estimatePrice>;
-  }[];
+  racks: SavedRack[];
   deliveryCents: number;
   totalCents: number;
   revision: number;
+  attribution?: LeadAttribution;
+  adjustmentCents?: number;
+  quoteNote?: string;
+  payment?: { policy: DepositPolicy; depositCents: number };
+}
+
+export function snapshotPayment(policy: DepositPolicy, totalCents: number, racks: SavedRack[]) {
+  return { policy, depositCents: depositForOrder(policy, totalCents, racks.some(({ price }) => price.toteQuantity > 0)) };
 }
 
 export type SavedOrder = {
@@ -83,11 +116,60 @@ export type SavedOrder = {
   confirmedWindow: string | null;
   paymentToken: string | null;
   emailStatus: string;
+  requestEmailStatus: string | null;
+  receiptEmailStatus: string | null;
+  qualified: 0 | 1;
+  quoteInquiryId: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  recordedPaymentCents: number;
 };
+
+export interface SavedOffer {
+  inquiryId: string;
+  token: string;
+  version: number;
+  expiresAt: number;
+  totalCents: number;
+  emailStatus: string;
+  orderId: string | null;
+  address: OrderSnapshot['address'];
+  subtotalCents: number;
+  deliveryCents: number;
+  quoteNote: string;
+}
+
+export interface PublicOffer {
+  status: 'open' | 'accepted' | 'expired' | 'superseded' | 'cancelled';
+  shopName: string;
+  version: number;
+  expiresAt: number;
+  racks: Pick<SavedRack, 'configuration' | 'price'>[];
+  totalCents: number;
+  adjustmentCents: number;
+  deliveryCents: number;
+  depositCents: number;
+  quoteNote: string;
+  orderId: string | null;
+}
+
+export interface QuoteSnapshot extends Customer {
+  kind: 'quote';
+  shopName: string;
+  zip: string;
+  details: string;
+  racks: SavedRack[];
+  rackSubtotalCents: number;
+  revision: number;
+  attribution?: LeadAttribution;
+  windows?: DeliveryWindow[];
+}
 
 export type SavedInquiry = {
   id: string;
   createdAt: string;
-  snapshot: { email: string; phone: string; details: string; configuration: string };
+  snapshot: QuoteSnapshot | { kind?: 'consult'; email: string; phone: string; details: string; configuration: string; attribution?: LeadAttribution };
   emailStatus: string;
+  receiptEmailStatus: string | null;
+  qualified: 0 | 1;
 };

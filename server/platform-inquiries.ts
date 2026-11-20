@@ -1,0 +1,106 @@
+import { getRackToteType } from '../src/config/rack';
+import { toteProfiles } from '../src/config/totes';
+import type { QuoteSnapshot, SavedInquiry } from '../src/config/shop';
+import { leadAttribution } from './platform-attribution';
+import { formatWindow } from '../src/config/shop';
+import { inquiryColumns, inquiryData, requestedWindows } from './platform-data';
+import type { Environment, InquiryRow, Shop } from './platform-data';
+import { rackEmailSummary, sendRequestEmail } from './platform-notifications';
+import { rackSnapshot } from './platform-orders';
+import { contactEmail, HttpError, requestId, requiredText, zipCode } from './platform-services';
+
+export async function getInquiry(env: Environment, shop: Shop, id: string) {
+  return env.DB.prepare(`SELECT ${inquiryColumns} FROM inquiries WHERE shop_id = ? AND id = ?`).bind(shop.id, id).first<InquiryRow>();
+}
+
+export async function notifyInquiry(env: Environment, shop: Shop, row: InquiryRow, receipt = false) {
+  const { id, snapshot } = inquiryData(row);
+  const { email, phone, details } = snapshot;
+  const quote = snapshot.kind === 'quote' ? snapshot : null;
+  const label = quote ? 'Order request' : 'Inquiry';
+  const preferences = quote?.windows?.length
+    ? `\n\nPreferred delivery times (${shop.settings.timezone}):\n${quote.windows.map((window, index) => `${index + 1}. ${formatWindow(window)}`).join('\n')}` : '';
+  const summary = snapshot.kind === 'quote'
+    ? `${rackEmailSummary(snapshot.racks)}\nRack and accessories subtotal: $${(snapshot.rackSubtotalCents / 100).toFixed(2)} before delivery.${preferences}`
+    : snapshot.configuration;
+
+  if (receipt && quote) {
+    await sendRequestEmail(env, shop, {
+      id, table: 'inquiries', column: 'receipt_email_status', status: row.receiptEmailStatus, key: 'quote-receipt-' + id,
+      message: {
+        to: email, reply_to: shop.settings.contactEmail || undefined, subject: `Order request received by ${quote.shopName}`,
+        text: `Thanks, ${quote.name}. Your builder will review rack availability and follow up to confirm your delivery fee and date.\n\n${summary}\n\nRequest reference: ${id.slice(0, 8).toUpperCase()}`,
+      },
+    });
+  } else if (!receipt) {
+    await sendRequestEmail(env, shop, {
+      id, table: 'inquiries', column: 'email_status', status: row.emailStatus, key: 'inquiry-' + id,
+      message: {
+        to: shop.settings.contactEmail, reply_to: email, subject: quote ? 'New rack order request' : 'New custom rack inquiry',
+        text: `${quote ? `${quote.name}\nZIP code: ${quote.zip}\n` : ''}Email: ${email}\nPhone: ${phone}\n\n${details}\n\n${summary}\n\n${label} ${id}`,
+      },
+    });
+  }
+}
+
+export async function consult(env: Environment, shop: Shop, fields: Record<string, unknown>) {
+  if (fields.website) return { sent: true };
+  const snapshot: SavedInquiry['snapshot'] = {
+    email: contactEmail(fields.email),
+    phone: requiredText(fields.phone, 'your phone number', 40),
+    details: requiredText(fields.details, 'your rack details', 2000),
+    configuration: rackSnapshot(fields.racks, shop).map(({ configuration, price }, index) =>
+      `Rack ${index + 1} · ${configuration.columns} × ${configuration.rows} · ${toteProfiles[getRackToteType(configuration)].label} · $${price.total}`).join('\n'),
+    attribution: leadAttribution(fields),
+  };
+  const id = crypto.randomUUID();
+  const json = JSON.stringify(snapshot);
+  await env.DB.prepare('INSERT INTO inquiries (id, shop_id, snapshot) VALUES (?, ?, ?)').bind(id, shop.id, json).run();
+  await notifyInquiry(env, shop, { id, createdAt: '', snapshot: json, emailStatus: 'pending', receiptEmailStatus: null, qualified: 0 });
+  return { sent: true };
+}
+
+export async function requestRackQuote(env: Environment, shop: Shop, fields: Record<string, unknown>) {
+  const id = requestId(fields.id);
+  if (fields.website) return { id, rackSubtotalCents: 0 };
+  const email = contactEmail(fields.email);
+  const savedQuote = await getInquiry(env, shop, id);
+  if (savedQuote) return quoteResult(savedQuote, email);
+  if (fields.revision !== shop.revision) throw new HttpError(409, 'The storefront settings changed. Refresh for current pricing.');
+
+  const racks = rackSnapshot(fields.racks, shop);
+  const windows = await requestedWindows(env, shop, fields.windows);
+  const snapshot: QuoteSnapshot = {
+    kind: 'quote', shopName: shop.settings.name, email,
+    name: requiredText(fields.name, 'your name', 100),
+    phone: requiredText(fields.phone, 'your phone number', 40),
+    zip: zipCode(fields.zip),
+    details: requiredText(fields.details ?? '', 'your rack details', 2000, true),
+    racks,
+    windows,
+    rackSubtotalCents: racks.reduce((sum, { price }) => sum + price.total * 100, 0),
+    revision: shop.revision,
+    attribution: leadAttribution(fields),
+  };
+  const json = JSON.stringify(snapshot);
+  const write = await env.DB.prepare(`
+    INSERT INTO inquiries (id, shop_id, snapshot, receipt_email_status) SELECT ?, ?, ?, 'pending'
+    WHERE (SELECT revision FROM shops WHERE id = ?) = ?
+    ON CONFLICT(id) DO NOTHING
+  `).bind(id, shop.id, json, shop.id, shop.revision).run();
+  if (!write.meta.changes) {
+    const existing = await getInquiry(env, shop, id);
+    if (existing) return quoteResult(existing, email);
+    throw new HttpError(409, 'The storefront settings changed. Refresh for current pricing.');
+  }
+
+  const row: InquiryRow = { id, snapshot: json, createdAt: '', qualified: 0, emailStatus: 'pending', receiptEmailStatus: 'pending' };
+  await Promise.all([notifyInquiry(env, shop, row), notifyInquiry(env, shop, row, true)]);
+  return { id, rackSubtotalCents: snapshot.rackSubtotalCents };
+}
+
+function quoteResult(row: InquiryRow, email: string) {
+  const { id, snapshot } = inquiryData(row);
+  if (snapshot.kind !== 'quote' || snapshot.email !== email) throw new HttpError(409, 'Start a new quote request.');
+  return { id, rackSubtotalCents: snapshot.rackSubtotalCents };
+}

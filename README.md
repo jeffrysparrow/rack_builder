@@ -15,6 +15,12 @@ npm run dev:worker
 
 Open **http://127.0.0.1:8787/**. Open **/admin** and enter your local development token to manage the shop. Drag the model to orbit and scroll or pinch to zoom. On narrow screens, the rack configuration is below the preview.
 
+Customers can continue to an order request and rank up to three posted delivery times. In Builder admin, open the request and prepare the final offer with the rack subtotal, delivery address, and fee. Quote links expire after 14 days. A revised quote replaces its previous link. When the customer accepts, the builder can book delivery and record offline payments. Set the public contact email, service area, lead time, and optional deposit policy under **Storefront**. The 90-day sales funnel and lead sources are under **Analytics**.
+
+The storefront can share a configuration with all rack selections. The real-photo gallery is at **/rack-builds/** and is readable with JavaScript disabled.
+
+Under **Reviews** in Builder admin, enter the customer’s display name, star rating, source, and review text. You can change the source, hide a review, or republish it from the same tab.
+
 ```sh
 npm run dev
 ```
@@ -95,7 +101,7 @@ Keep provider secrets in the ignored `.env.local`. Wrangler loads that file in l
 | `CONSULT_TO_EMAIL` | Initial ToteWorks ATX recipient. Builder admin can change the recipient. |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Stripe test credentials for checkout and webhook verification. Local forwarding can use the Stripe CLI. |
 
-Create at least three future delivery windows in **Builder admin → Delivery**. Windows use the shop’s local time. Customers can rank three distinct windows, and an order request saves the current price and cut list. Confirming a window reserves it and counts it against the shop’s Monday-through-Sunday order capacity. Confirmation sends a payment link when Stripe is configured. A failed email can be retried from Builder admin. A verified Stripe webhook records the payment.
+Publish future delivery windows in **Builder admin → Delivery**. Customers can include up to three preferences, and an order request saves the rack price and cut list. Confirming a window reserves it and counts against the shop’s Monday-through-Sunday capacity. Pay on delivery is the default. With Stripe configured, the builder can explicitly request full card prepayment for an eligible order. Failed emails can be retried from Builder admin, and a verified Stripe webhook records online payment.
 
 ### Production setup
 

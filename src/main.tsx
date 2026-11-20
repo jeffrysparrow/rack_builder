@@ -1,29 +1,14 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Configurator } from './components/Configurator';
+import { CustomerOffer } from './components/CustomerOffer';
 import { defaultShop, requestJson } from './config/shop';
 import type { Storefront } from './config/shop';
+import { captureVisit } from './visit';
 import './style.css';
 
 const BuilderAdmin = lazy(() => import('./components/BuilderAdmin').then(({ BuilderAdmin }) => ({ default: BuilderAdmin })));
-const offline = { settings: defaultShop, revision: 1, deliveryAvailable: false, consultAvailable: false };
-
-function Store() {
-  const [shop, setShop] = useState<Storefront | null>(import.meta.env.MODE === 'storefront' ? offline : null);
-  const [error, setError] = useState(false);
-  useEffect(() => {
-    if (import.meta.env.MODE === 'storefront') return;
-    requestJson<Storefront>('/api/shop').then(setShop).catch(() => setError(true));
-  }, []);
-  useEffect(() => {
-    if (!shop) return;
-    document.documentElement.style.setProperty('--accent', shop.settings.accent);
-    document.title = `${shop.settings.name} | ${shop.settings.title}`;
-  }, [shop]);
-
-  if (error) return <main className="workspace"><h1>Storefront temporarily unavailable</h1><p>Refresh the page to try again.</p></main>;
-  return shop ? <Configurator shop={shop} /> : <p className="workspace" role="status">Loading storefront…</p>;
-}
+const offline: Storefront = { settings: defaultShop, revision: 1, deliveryAvailable: false, consultAvailable: false, reviews: [] };
 
 function PaymentPage({ token }: { token: string }) {
   const [status, setStatus] = useState('');
@@ -57,15 +42,33 @@ function PaymentPage({ token }: { token: string }) {
   </main>;
 }
 
-function App() {
-  if (import.meta.env.MODE === 'storefront') return <Store />;
-  const path = location.pathname.replace(/\/$/, '');
+function PrivatePage({ path }: { path: string }) {
   if (path === '/admin') return <Suspense fallback={<p className="workspace" role="status">Loading Builder admin…</p>}><BuilderAdmin /></Suspense>;
   if (path.startsWith('/pay/')) return <PaymentPage token={path.slice(5)} />;
+  if (path.startsWith('/quote/')) return <CustomerOffer token={path.slice(7)} />;
   if (path === '/order-received') return <main className="payment-page store-section">
     <h1>Checkout complete</h1><p>Stripe will process your payment. Your builder will see the result on your order.</p><a href="/">Return to the storefront</a>
   </main>;
-  return <Store />;
+  return null;
 }
 
-createRoot(document.getElementById('root')!).render(<App />);
+const root = document.getElementById('root')!;
+const path = location.pathname.replace(/\/$/, '');
+if (import.meta.env.MODE === 'storefront') {
+  createRoot(root).render(<Configurator shop={offline} />);
+} else if (/^\/(?:admin$|pay\/|quote\/|order-received$)/.test(path)) {
+  createRoot(root).render(<PrivatePage path={path} />);
+} else {
+  captureVisit();
+  void requestJson<Storefront>('/api/shop').then((shop) => {
+    document.documentElement.style.setProperty('--accent', shop.settings.accent);
+    document.title = `${shop.settings.name} | ${shop.settings.title}`;
+    createRoot(root).render(<Configurator shop={shop} />);
+  }).catch(() => {
+    const message = document.createElement('p');
+    message.className = 'workspace';
+    message.textContent = 'The configurator is temporarily unavailable. Refresh this page to try again.';
+    message.setAttribute('role', 'status');
+    root.append(message);
+  });
+}

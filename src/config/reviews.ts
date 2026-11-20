@@ -1,15 +1,23 @@
-interface MarketplaceReview {
+export const reviewRatings = [5, 4, 3, 2, 1] as const;
+export const reviewNameLimit = 100;
+export const reviewCommentLimit = 2000;
+export const reviewSources = {
+  facebook_marketplace: 'Facebook Marketplace',
+  google: 'Google Reviews',
+  direct: 'Direct customer feedback',
+  other: 'Other source',
+  unspecified: 'No source shown',
+};
+export type ReviewSource = keyof typeof reviewSources;
+
+export interface CustomerReview {
   id: string;
-  stars: 1 | 2 | 3 | 4 | 5;
+  name: string;
+  stars: typeof reviewRatings[number];
   comment: string;
-  attribution?: string;
+  source: ReviewSource;
 }
 
-interface MarketplaceReviews {
-  profileUrl?: string;
-  overall?: { stars: number; count: number };
-  comments: MarketplaceReview[];
+export interface AdminReview extends CustomerReview {
+  published: 0 | 1;
 }
-
-// Use the seller profile's actual aggregate and customer comments approved for display.
-export const marketplaceReviews: MarketplaceReviews = { comments: [] };
