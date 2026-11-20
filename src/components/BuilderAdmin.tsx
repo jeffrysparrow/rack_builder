@@ -187,7 +187,7 @@ function Settings({ data, update }: { data: AdminPanel; update: Update }) {
       <div className="admin-fields">
         {input('serviceArea', 'Public service area', settings.serviceArea, 100)}
         {input('buildLeadTime', 'Approximate build lead time', settings.buildLeadTime, 100, 'text', false)}
-        {input('publicEmail', 'Public contact email', settings.publicEmail, 254, 'email', false)}
+        {input('publicEmail', 'Public contact and customer reply email', settings.publicEmail, 254, 'email', false)}
       </div>
       <p className="layout-help">Customers see the contact form when the public email is blank.</p>
     </section>

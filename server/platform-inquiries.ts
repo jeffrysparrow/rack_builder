@@ -33,7 +33,7 @@ export async function notifyInquiry(env: Environment, shop: Shop, row: InquiryRo
     await sendRequestEmail(env, shop, {
       id, table: 'inquiries', column: 'receipt_email_status', status: row.receiptEmailStatus, key: 'quote-receipt-' + id,
       message: {
-        to: email, reply_to: shop.settings.contactEmail || undefined, subject: `Order request received by ${shop.settings.name}`,
+        to: email, reply_to: shop.settings.publicEmail || shop.settings.contactEmail || undefined, subject: `Order request received by ${shop.settings.name}`,
         text: `Thanks, ${quote.name}. Your builder will follow up with a quote and confirm the rack details, delivery and any payment arrangements with you before building. No payment was collected.\n\n${summary}\n\nRequest reference: ${id.slice(0, 8).toUpperCase()}`,
       },
     });

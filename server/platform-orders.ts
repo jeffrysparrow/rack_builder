@@ -112,7 +112,7 @@ export async function notifyOrderRequest(env: Environment, shop: Shop, row: Orde
   await sendRequestEmail(env, shop, receipt ? {
     id, table: 'orders', column: 'receipt_email_status', status: row.receiptEmailStatus, key: 'order-receipt-' + id,
     message: {
-      to: customer.email, reply_to: shop.settings.contactEmail || undefined, subject: `Order request received by ${shop.settings.name}`,
+      to: customer.email, reply_to: shop.settings.publicEmail || shop.settings.contactEmail || undefined, subject: `Order request received by ${shop.settings.name}`,
       text: `Thanks, ${customer.name}. ${row.quoteInquiryId ? 'Your quote was accepted. Your builder will contact you to schedule delivery.' : 'Your builder will review your delivery preferences and follow up about payment.'}\n\n${rackEmailSummary(racks)}\nDelivery: $${(deliveryCents / 100).toFixed(2)}\n${row.quoteInquiryId ? 'Accepted' : 'Estimated'} total: $${(totalCents / 100).toFixed(2)}\n\nOrder reference: ${id.slice(0, 8).toUpperCase()}`,
     },
   } : {
@@ -179,7 +179,7 @@ export async function sendConfirmation(env: Environment, shop: Shop, row: OrderR
       : `\nBalance due at delivery: $${(remainingBalance / 100).toFixed(2)}.`;
   const result = await sendEmail(env.RESEND_API_KEY, env.CONSULT_FROM_EMAIL, 'order-confirmed-' + row.id, {
     to: snapshot.customer.email, subject: `Delivery confirmed by ${shop.settings.name}`,
-    reply_to: shop.settings.contactEmail || undefined,
+    reply_to: shop.settings.publicEmail || shop.settings.contactEmail || undefined,
     text: `Your racks are scheduled for ${formatWindow(window)} (${shop.settings.timezone}).\nOrder total: $${(snapshot.totalCents / 100).toFixed(2)}${payment}\n\nOrder ${row.id}`,
   }, shop.settings.name);
   await env.DB.prepare(`UPDATE orders SET email_status = ? WHERE shop_id = ? AND id = ? AND email_status != 'sent'`).bind(result, shop.id, row.id).run();
