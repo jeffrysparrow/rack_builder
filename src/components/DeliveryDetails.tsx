@@ -7,6 +7,7 @@ import { formatWindowTime, requestJson } from '../config/shop';
 import type { DeliveryWindow } from '../config/shop';
 import { getVisit } from '../visit';
 import { DiscoveryField } from './DiscoveryField';
+import { OrderRequestConfirmation } from './OrderRequestConfirmation';
 
 interface DeliveryAddress {
   street: string;
@@ -189,11 +190,7 @@ function DeliveryRequest({ quoteToken, address, racks, timezone, onRequestOrder 
     }
   }
 
-  if (order) return <div className="delivery-request" role="status">
-    <h3>Order request received</h3>
-    <p>Your builder will review availability, confirm your delivery window, and follow up about payment.</p>
-    <p>Order reference <strong>{order.slice(0, 8).toUpperCase()}</strong></p>
-  </div>;
+  if (order) return <OrderRequestConfirmation reference={order} />;
 
   const days = [...new Set(windows?.map(({ date }) => date))];
 

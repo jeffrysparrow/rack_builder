@@ -6,6 +6,7 @@ import { formatWindowTime, MAX_DELIVERY_PREFERENCES, requestJson } from '../conf
 import type { DeliveryWindow, ShopSettings } from '../config/shop';
 import { getVisit } from '../visit';
 import { DiscoveryField } from './DiscoveryField';
+import { OrderRequestConfirmation } from './OrderRequestConfirmation';
 
 const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 type Receipt = { id: string; rackSubtotalCents: number };
@@ -72,20 +73,15 @@ export function OrderRequest({ racks, subtotal, revision, deliveryZip, settings,
 
   const title = racks.length === 1 ? 'Request this rack' : 'Request these racks';
   return <section ref={section} className="store-section quote-section" id="quote" tabIndex={-1} aria-labelledby="order-request-heading">
-    <div className="store-section-heading"><h2 id="order-request-heading">{receipt ? 'Order request' : title}</h2></div>
-    {receipt ? <>
-      <div role="status">
-        <p><strong>Order request received</strong></p>
-        <p>Your builder will review availability and follow up to confirm your delivery fee and date. Reference <strong>{receipt.id.slice(0, 8).toUpperCase()}</strong>.</p>
-        {receipt.rackSubtotalCents > 0 && <p>Rack and accessories subtotal {dollars.format(receipt.rackSubtotalCents / 100)} before delivery.</p>}
-      </div>
-      <button type="button" className="delivery-action delivery-edit" onClick={() => {
+    {receipt ? <OrderRequestConfirmation reference={receipt.id} rackSubtotalCents={receipt.rackSubtotalCents}
+      headingId="order-request-heading" onStartAnother={() => {
         submission.current = null;
         setChoices([]);
         setReceipt(undefined);
+        section.current?.focus();
         void refreshWindows();
-      }}>Start another order request</button>
-    </> : <>
+      }} /> : <>
+      <div className="store-section-heading"><h2 id="order-request-heading">{title}</h2></div>
       <p>Send your configuration to {settings.name}. Your builder will review availability and confirm your delivery fee and date.</p>
       <p className="quote-estimate"><strong>{racks.length} {racks.length === 1 ? 'rack' : 'racks'} · {dollars.format(subtotal)}</strong> before delivery</p>
       <dl className="order-trust">

@@ -69,9 +69,9 @@ export async function emailOffer(env: Environment, shop: Shop, token: string, or
   const snapshot = JSON.parse(row.snapshot) as OrderSnapshot;
   const emailStatus = await sendEmail(env.RESEND_API_KEY, env.CONSULT_FROM_EMAIL, 'quote-offer-' + row.token, {
     to: snapshot.customer.email, reply_to: shop.settings.contactEmail || undefined,
-    subject: `Your rack quote from ${snapshot.shopName}`,
+    subject: `Your rack quote from ${shop.settings.name}`,
     text: `Review and accept your rack quote for $${(snapshot.totalCents / 100).toFixed(2)}.\n\n${origin}/quote/${row.token}`,
-  });
+  }, shop.settings.name);
   await env.DB.prepare(`UPDATE quote_offers SET email_status = ? WHERE shop_id = ? AND token = ? AND email_status != 'sent'`)
     .bind(emailStatus, shop.id, row.token).run();
   return { emailStatus: (await getOffer(env, shop, token)).emailStatus };

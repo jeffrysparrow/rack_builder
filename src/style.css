@@ -211,7 +211,22 @@ body:has(.delivery-dialog[open]) { overflow: hidden; }
 .store-section p { margin: .7rem 0 0; color: var(--muted); line-height: 1.55; }
 .quote-section { margin-top: 1rem; }
 .quote-section .quote-estimate, .quote-section strong { color: var(--ink); }
-.quote-section > .delivery-edit { margin-top: 1rem; }
+.request-confirmation {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: .8rem 1rem;
+  margin-top: .65rem; padding: clamp(.9rem, 3vw, 1.6rem); scroll-margin-block-start: 1rem;
+  border: 1px solid #bacbb5; border-radius: .75rem; background: #edf3e8; color: var(--ink);
+}
+.request-confirmation:focus-visible { outline: 2px solid #345635; outline-offset: 3px; }
+.request-confirmation-mark {
+  display: grid; place-items: center; width: 2rem; height: 2rem;
+  border-radius: 50%; background: #344b37; color: #fff; font-weight: 750;
+}
+.request-confirmation :is(h2, h3) { margin: 0; font: 500 clamp(1.35rem, 2.5vw, 2rem)/1.1 Georgia, serif; letter-spacing: -.025em; }
+.request-confirmation p { margin: .45rem 0 0; line-height: 1.5; }
+.request-confirmation dl { display: flex; flex-wrap: wrap; gap: .65rem 1.5rem; margin: .85rem 0 0; }
+.request-confirmation dt { color: var(--muted); font-size: .875rem; }
+.request-confirmation dd { margin: .15rem 0 0; font-weight: 750; }
+.request-confirmation .delivery-action { margin-top: 1rem; }
 .order-trust { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem 1rem; margin: .9rem 0 1.2rem; padding: .8rem 0; border-block: 1px solid var(--line); max-width: 48rem; }
 .order-trust dt { font-size: .875rem; font-weight: 700; }
 .order-trust dd { margin: .25rem 0 0; color: var(--muted); font-size: .875rem; line-height: 1.45; overflow-wrap: anywhere; }

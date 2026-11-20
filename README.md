@@ -97,7 +97,7 @@ Keep provider secrets in the ignored `.env.local`. Wrangler loads that file in l
 | `GOOGLE_MAPS_API_KEY` | Google Routes key. Use an API restriction for Routes. |
 | `DELIVERY_ORIGIN` | Initial routing address for Totes & Timber. Editable in Builder admin and excluded from public responses. |
 | `QUOTE_SIGNING_SECRET` | Random signing key for short-lived, address-bound route quotes. Generate one with `openssl rand -hex 32`. |
-| `RESEND_API_KEY`, `CONSULT_FROM_EMAIL` | Resend API key and verified sender for inquiries and order notifications. |
+| `RESEND_API_KEY`, `CONSULT_FROM_EMAIL` | Resend API key and verified sender address for inquiries and order notifications. The From display name comes from the shop settings. |
 | `CONSULT_TO_EMAIL` | Initial Totes & Timber recipient. Builder admin can change the recipient. |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Stripe test credentials for checkout and webhook verification. Local forwarding can use the Stripe CLI. |
 

@@ -20,7 +20,7 @@ export async function sendRequestEmail(env: Environment, shop: Shop, {
   message: Parameters<typeof sendEmail>[3];
 }) {
   if (status === null || status === 'sent') return;
-  const result = await sendEmail(env.RESEND_API_KEY, env.CONSULT_FROM_EMAIL, key, message);
+  const result = await sendEmail(env.RESEND_API_KEY, env.CONSULT_FROM_EMAIL, key, message, shop.settings.name);
   await env.DB.prepare(`UPDATE ${table} SET ${column} = ? WHERE shop_id = ? AND id = ? AND ${column} != 'sent'`)
     .bind(result, shop.id, id).run();
 }

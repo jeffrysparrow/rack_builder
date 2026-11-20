@@ -114,13 +114,17 @@ export async function accessEmail(token: string, issuer: string, audience: strin
 
 export async function sendEmail(key: string | undefined, sender: string | undefined, id: string, message: {
   to: string; subject: string; text: string; reply_to?: string;
-}) {
+}, shopName: string) {
   if (!key || !sender || !message.to) return 'unconfigured';
+  const configuredSender = sender.trim();
+  const address = configuredSender.match(/<([^<>]+)>$/)?.[1].trim() ?? configuredSender;
+  const displayName = shopName.replace(/[\x00-\x1f\x7f]/g, ' ').trim().replace(/["\\]/g, '\\$&');
+  const from = displayName ? `"${displayName}" <${address}>` : address;
   try {
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', 'Idempotency-Key': id },
-      body: JSON.stringify({ from: sender, ...message }),
+      body: JSON.stringify({ from, ...message }),
       signal: AbortSignal.timeout(5000),
     });
     return response.ok ? 'sent' : 'failed';
