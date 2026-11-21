@@ -2,10 +2,10 @@ import { getRackToteType } from '../src/config/rack';
 import { toteProfiles } from '../src/config/totes';
 import type { QuoteSnapshot, SavedInquiry } from '../src/config/shop';
 import { leadAttribution } from './platform-attribution';
-import { describeDeliveryPreference, formatRackSize, formatWindow } from '../src/config/shop';
+import { deliveryEstimateExpired, describeDeliveryPreference, formatRackSize, formatWindow } from '../src/config/shop';
 import { inquiryColumns, inquiryData, requestedQuotePreferences } from './platform-data';
 import type { Environment, InquiryRow, Shop } from './platform-data';
-import { rackEmailSummary, sendRequestEmail } from './platform-notifications';
+import { emailDollars, rackEmailSummary, sendRequestEmail } from './platform-notifications';
 import { rackSnapshot, verifyQuote } from './platform-orders';
 import { contactEmail, HttpError, requestId, requiredText, streetAddress, zipCode } from './platform-services';
 import { record } from './platform-settings';
@@ -22,19 +22,19 @@ export async function notifyInquiry(env: Environment, shop: Shop, row: InquiryRo
   const requested = quote?.deliveryPreferences?.map((choice) => describeDeliveryPreference(choice, quote.windows ?? []))
     ?? quote?.windows?.map(formatWindow);
   const preferences = requested?.length
-    ? `\n\nPreferred delivery times (${shop.settings.timezone}):\n${requested.map((label, index) => `${index + 1}. ${label}`).join('\n')}` : '';
+    ? `\n\nPreferred delivery times (${shop.settings.timezone === 'America/Chicago' ? 'Central' : shop.settings.timezone}):\n${requested.map((label, index) => `${index + 1}. ${label}`).join('\n')}` : '';
   const estimate = quote?.deliveryEstimateCents === undefined ? ''
-    : `\nEstimated delivery: $${(quote.deliveryEstimateCents / 100).toFixed(2)}\nEstimated total: $${((quote.rackSubtotalCents + quote.deliveryEstimateCents) / 100).toFixed(2)}`;
+    : `\nEstimated delivery: ${emailDollars(quote.deliveryEstimateCents)}\nEstimated total with delivery: ${emailDollars(quote.rackSubtotalCents + quote.deliveryEstimateCents)}`;
   const summary = snapshot.kind === 'quote'
-    ? `${rackEmailSummary(snapshot.racks)}\nRack and accessories subtotal: $${(snapshot.rackSubtotalCents / 100).toFixed(2)} before delivery.${estimate}${preferences}`
+    ? `${rackEmailSummary(snapshot.racks)}\nRack subtotal: ${emailDollars(snapshot.rackSubtotalCents)}${estimate}${preferences}`
     : snapshot.configuration;
 
   if (receipt && quote) {
     await sendRequestEmail(env, shop, {
       id, table: 'inquiries', column: 'receipt_email_status', status: row.receiptEmailStatus, key: 'quote-receipt-' + id,
       message: {
-        to: email, reply_to: shop.settings.publicEmail || shop.settings.contactEmail || undefined, subject: `Order request received by ${shop.settings.name}`,
-        text: `Thanks, ${quote.name}. Your builder will follow up with a quote and confirm the rack details, delivery and any payment arrangements with you before building. No payment was collected.\n\n${summary}\n\nRequest reference: ${id.slice(0, 8).toUpperCase()}`,
+        to: email, reply_to: shop.settings.publicEmail || shop.settings.contactEmail || undefined, subject: `We got your rack request · ${shop.settings.name}`,
+        text: `Thanks, ${quote.name}. We got your rack request. We’ll follow up with a quote and confirm the details, delivery and any required deposit before we start. No payment was collected.\n\n${summary}\n\nRequest reference: ${id.slice(0, 8).toUpperCase()}`,
       },
     });
   } else if (!receipt) {
@@ -71,7 +71,7 @@ export async function requestRackQuote(env: Environment, shop: Shop, fields: Rec
   const email = contactEmail(fields.email);
   const savedQuote = await getInquiry(env, shop, id);
   if (savedQuote) return quoteResult(savedQuote, email);
-  if (fields.revision !== shop.revision) throw new HttpError(409, 'The storefront settings changed. Refresh for current pricing.');
+  if (fields.revision !== shop.revision) throw new HttpError(409, 'Our pricing or options changed. Refresh the page and check your rack before trying again.');
 
   const racks = rackSnapshot(fields.racks, shop);
   const { windows, deliveryPreferences } = await requestedQuotePreferences(env, shop, fields.windows);
@@ -84,7 +84,7 @@ export async function requestRackQuote(env: Environment, shop: Shop, fields: Rec
   };
   let deliveryEstimateCents: number | undefined;
   if (fields.quoteToken !== undefined) {
-    if (!destination || !env.QUOTE_SIGNING_SECRET) throw new HttpError(409, 'Your delivery quote expired or the address changed. Calculate delivery again.');
+    if (!destination || !env.QUOTE_SIGNING_SECRET) throw new HttpError(409, deliveryEstimateExpired);
     deliveryEstimateCents = await verifyQuote(shop, destination, fields.quoteToken, env.QUOTE_SIGNING_SECRET);
   }
   const snapshot: QuoteSnapshot = {
@@ -112,16 +112,16 @@ export async function requestRackQuote(env: Environment, shop: Shop, fields: Rec
   if (!write.meta.changes) {
     const existing = await getInquiry(env, shop, id);
     if (existing) return quoteResult(existing, email);
-    throw new HttpError(409, 'The storefront settings changed. Refresh for current pricing.');
+    throw new HttpError(409, 'Our pricing or options changed. Refresh the page and check your rack before trying again.');
   }
 
   const row: InquiryRow = { id, snapshot: json, createdAt: '', qualified: 0, emailStatus: 'pending', receiptEmailStatus: 'pending' };
   await Promise.all([notifyInquiry(env, shop, row), notifyInquiry(env, shop, row, true)]);
-  return quoteResult(row, email);
+  return quoteResult(await getInquiry(env, shop, id) ?? row, email);
 }
 
 function quoteResult(row: InquiryRow, email: string) {
   const { id, snapshot } = inquiryData(row);
   if (snapshot.kind !== 'quote' || snapshot.email !== email) throw new HttpError(409, 'Start a new quote request.');
-  return { id, rackSubtotalCents: snapshot.rackSubtotalCents, deliveryEstimateCents: snapshot.deliveryEstimateCents };
+  return { id, rackSubtotalCents: snapshot.rackSubtotalCents, deliveryEstimateCents: snapshot.deliveryEstimateCents, receiptEmailStatus: row.receiptEmailStatus };
 }

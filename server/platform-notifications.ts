@@ -5,6 +5,8 @@ import { sendEmail } from './platform-services';
 
 const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 
+export const emailDollars = (cents: number) => dollars.format(cents / 100);
+
 export function rackEmailSummary(racks: SavedRack[]) {
   return racks.map((rack, index) => `Rack ${index + 1}: ${describeRack(rack)} · ${dollars.format(rack.price.total)}`).join('\n');
 }

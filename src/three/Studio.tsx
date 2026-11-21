@@ -150,7 +150,7 @@ function StudioScene({ layout, reset, zoom }: { layout: Layout; reset: number; z
 export function Studio({ layout, reset, zoom }: { layout: Layout; reset: number; zoom: number }) {
   return <Canvas shadows dpr={[1, 1.5]} camera={{ position: [2, 2, 4], fov: 34 }}
     gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
-    fallback={<p className="viewer-error">The 3D viewer requires WebGL.</p>}>
+    fallback={<p className="viewer-error">The 3D preview isn’t available on this device. You can still design your rack and get a price.</p>}>
     <StudioScene layout={layout} reset={reset} zoom={zoom} />
   </Canvas>;
 }

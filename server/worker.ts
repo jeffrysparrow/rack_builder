@@ -201,7 +201,7 @@ async function api(request: Request, env: Environment, url: URL) {
   if (method !== 'POST') throw new HttpError(405, 'This method is unavailable.');
   const ip = request.headers.get('CF-Connecting-IP') ?? 'local';
   if (env.PUBLIC_LIMIT && !(await env.PUBLIC_LIMIT.limit({ key: shop.id + ':' + pathname + ':' + ip })).success) {
-    throw new HttpError(429, 'Too many requests. Wait a minute and try again.');
+    throw new HttpError(429, 'Please wait a minute and try again.');
   }
   const fields = record(JSON.parse(await readBody(request, 16000)));
   if (offerToken && fields.accepted === true) return json(await acceptOffer(env, shop, offerToken), 201);
@@ -210,14 +210,14 @@ async function api(request: Request, env: Environment, url: URL) {
     return new Response(null, { status: 204 });
   }
   if (pathname === '/api/delivery-quote') {
-    if (!deliveryAvailable || !env.GOOGLE_MAPS_API_KEY || !env.QUOTE_SIGNING_SECRET) throw new HttpError(503, 'Delivery quotes are unavailable.');
-    if (fields.revision !== shop.revision) throw new HttpError(409, 'The storefront settings changed. Refresh the page for current pricing.');
+    if (!deliveryAvailable || !env.GOOGLE_MAPS_API_KEY || !env.QUOTE_SIGNING_SECRET) throw new HttpError(503, 'We can’t calculate delivery online right now. Please try again later.');
+    if (fields.revision !== shop.revision) throw new HttpError(409, 'Our pricing or options changed. Refresh the page and check your rack before trying again.');
     const destination = streetAddress(fields);
     const feeCents = await routeFee(destination, shop.settings, env.GOOGLE_MAPS_API_KEY);
     return json({ feeCents, token: await createQuote(shop, destination, feeCents, env.QUOTE_SIGNING_SECRET) });
   }
   if (!requestsAvailable && (pathname === '/api/consult' || pathname === '/api/orders' || pathname === '/api/quotes')) {
-    throw new HttpError(503, 'Online requests are temporarily unavailable.');
+    throw new HttpError(503, 'We can’t take requests online right now. Please try again later.');
   }
   if (pathname === '/api/consult') return json(await consult(env, shop, fields), 201);
   if (pathname === '/api/quotes') return json(await requestRackQuote(env, shop, fields), 201);
@@ -254,7 +254,7 @@ export default {
       if (error instanceof HttpError) return json({ error: error.message }, error.status);
       if (error instanceof SyntaxError) return json({ error: 'Check the submitted fields.' }, 400);
       console.error('Platform request failed', request.method, url.pathname.startsWith('/api/') ? url.pathname : 'page');
-      return json({ error: 'The service is temporarily unavailable. Try again shortly.' }, 500);
+      return json({ error: 'Something went wrong on our end. Please try again shortly.' }, 500);
     }
   },
 };

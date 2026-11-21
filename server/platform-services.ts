@@ -54,13 +54,13 @@ export async function routeFee(destination: Destination, settings: AdminSettings
     }),
     signal: AbortSignal.timeout(8000),
   }).catch(() => null);
-  if (!response?.ok) throw new HttpError(502, 'Delivery quotes are temporarily unavailable.');
+  if (!response?.ok) throw new HttpError(502, 'We couldn’t calculate delivery right now. Please try again.');
   const data = await response.json() as { routes?: { distanceMeters?: number }[] };
   const route = data.routes?.[0];
   // Google omits the zero-valued protobuf field when both waypoints coincide.
   const meters = route && (route.distanceMeters ?? 0);
   if (typeof meters !== 'number' || !Number.isFinite(meters) || meters < 0) {
-    throw new HttpError(422, 'No driving route was found. Check the address to try again.');
+    throw new HttpError(422, 'We couldn’t calculate delivery for that address. Check it and try again.');
   }
   return Math.round(Math.max(0, meters / 1609.344 - settings.delivery.freeMiles) * settings.delivery.extraMileRate) * 100;
 }

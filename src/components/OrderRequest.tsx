@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import type { RackConfiguration } from '../config/rack';
+import type { outsideDimensions, RackConfiguration } from '../config/rack';
 import { depositForOrder } from '../config/payments';
 import { estimatePrice } from '../config/pricing';
-import { deliveryPreferenceWindows, describeDeliveryPreference, describeRack, requestJson } from '../config/shop';
+import { defaultShop, deliveryEstimateExpired, deliveryPreferenceWindows, deliveryTimeUnavailable, describeDeliveryPreference, describeRack, requestJson } from '../config/shop';
 import type { DeliveryWindow, OrderSnapshot, ShopSettings } from '../config/shop';
 import { getVisit } from '../visit';
 import { DeliveryPreferences } from './DeliveryDetails';
@@ -11,25 +11,26 @@ import { DiscoveryField } from './DiscoveryField';
 import { OrderRequestConfirmation } from './OrderRequestConfirmation';
 
 const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+const rateDollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 });
 const blankAddress = { street: '', unit: '', city: '', state: 'TX', zip: '', notes: '' };
 type Address = OrderSnapshot['address'];
 type Quote = { feeCents: number; token: string };
-type Receipt = { id: string; rackSubtotalCents: number; deliveryEstimateCents?: number };
+type Receipt = { id: string; rackSubtotalCents: number; deliveryEstimateCents?: number; receiptEmailStatus?: string | null };
 
 export function PurchaseSteps({ current, onConfigure, onDelivery, busy }: {
   current: 'configure' | 'delivery' | 'review'; onConfigure?: () => void; onDelivery?: () => void; busy?: boolean;
 }) {
   return <nav aria-label="Order steps"><ol className="purchase-steps">
     <li aria-current={current === 'configure' ? 'step' : undefined}>{onConfigure && current !== 'configure'
-      ? <button type="button" onClick={onConfigure} disabled={busy}>Configure</button> : 'Configure'}</li>
+      ? <button type="button" onClick={onConfigure} disabled={busy}>Design your rack</button> : 'Design your rack'}</li>
     <li aria-current={current === 'delivery' ? 'step' : undefined}>{onDelivery && current === 'review'
-      ? <button type="button" onClick={onDelivery} disabled={busy}>Delivery &amp; scheduling</button> : 'Delivery & scheduling'}</li>
+      ? <button type="button" onClick={onDelivery} disabled={busy}>Delivery &amp; timing</button> : 'Delivery & timing'}</li>
     <li aria-current={current === 'review' ? 'step' : undefined}>Review &amp; submit</li>
   </ol></nav>;
 }
 
-export function OrderRequest({ racks, subtotal, revision, settings, canEstimate, canSubmit, active, onConfigure }: {
-  racks: RackConfiguration[]; subtotal: number; revision: number; settings: ShopSettings;
+export function OrderRequest({ racks, dimensions, subtotal, revision, settings, canEstimate, canSubmit, active, onConfigure }: {
+  racks: RackConfiguration[]; dimensions: ReturnType<typeof outsideDimensions>[]; subtotal: number; revision: number; settings: ShopSettings;
   canEstimate: boolean; canSubmit: boolean; active: boolean; onConfigure: () => void;
 }) {
   const section = useRef<HTMLElement>(null);
@@ -101,12 +102,12 @@ export function OrderRequest({ racks, subtotal, revision, settings, canEstimate,
     try {
       const estimate = await requestJson<Quote>('/api/delivery-quote', { ...address, revision });
       if (!Number.isSafeInteger(estimate.feeCents) || estimate.feeCents < 0 || typeof estimate.token !== 'string') {
-        throw new Error('An online delivery estimate is unavailable.');
+        throw new Error('We couldn’t calculate delivery. Check the address and try again.');
       }
       setQuote(estimate);
       requestAnimationFrame(() => estimateStatus.current?.focus());
     } catch (failure) {
-      setEstimateError((failure as Error).message);
+      setEstimateError(failure instanceof TypeError ? 'We couldn’t calculate delivery. Check the address and try again.' : (failure as Error).message);
     } finally {
       setBusy(false);
     }
@@ -124,7 +125,8 @@ export function OrderRequest({ racks, subtotal, revision, settings, canEstimate,
     try {
       setReceipt(await requestJson<Receipt>('/api/quotes', { ...payload, id: submission.current.id }));
     } catch (failure) {
-      setError((failure as Error).message);
+      const message = (failure as Error).message;
+      setError(failure instanceof TypeError ? 'Something went wrong sending your request. Please try again.' : message);
     } finally {
       setBusy(false);
     }
@@ -149,7 +151,8 @@ export function OrderRequest({ racks, subtotal, revision, settings, canEstimate,
   );
   return <section ref={section} className="store-section quote-section" id="quote" hidden={!active} aria-labelledby="order-request-heading">
     {receipt ? <OrderRequestConfirmation reference={receipt.id} rackSubtotalCents={receipt.rackSubtotalCents}
-      deliveryEstimateCents={receipt.deliveryEstimateCents} headingId="order-request-heading" onStartAnother={() => {
+      deliveryEstimateCents={receipt.deliveryEstimateCents} emailStatus={receipt.receiptEmailStatus}
+      rackCount={racks.length} shopName={settings.name} headingId="order-request-heading" onStartAnother={() => {
         submission.current = null;
         setChoices([]);
         setContact({ name: '', email: '', phone: '', discovery: '', website: '' });
@@ -162,40 +165,44 @@ export function OrderRequest({ racks, subtotal, revision, settings, canEstimate,
       }} /> : <>
       {canSubmit && <PurchaseSteps current={step} onConfigure={configure} onDelivery={editDelivery} busy={busy} />}
       <div className="store-section-heading">
-        <h2 id="order-request-heading" tabIndex={-1} ref={heading}>{step === 'delivery' ? canSubmit ? 'Delivery & scheduling' : 'Estimate delivery' : 'Review your order request'}</h2>
+        <h2 id="order-request-heading" tabIndex={-1} ref={heading}>{step === 'delivery' ? canSubmit ? 'Delivery & timing' : 'Estimate delivery' : 'Look good?'}</h2>
       </div>
+      {step === 'review' && <p>Double-check your rack size, tote brand, and delivery details before sending your request.</p>}
       <div className="checkout-grid">
         <aside className="checkout-summary" aria-label="Order summary">
-          <div className="section-heading"><h3>{multiple ? `${racks.length} racks` : 'Your rack'}</h3>
+          <div className="section-heading"><h3>{step === 'delivery' ? 'Your order' : multiple ? 'Your racks' : 'Your rack'}</h3>
             <button type="button" className="text-button" onClick={configure} disabled={busy}>Edit {multiple ? 'racks' : 'rack'}</button>
           </div>
           {step === 'review' && <ul>
             {racks.map((rack, index) => {
               const price = estimatePrice(rack, settings.rates, settings.build);
               return <li key={index}>{multiple && <strong>Rack {index + 1}</strong>}
-                {describeRack({ configuration: rack, price })}</li>;
+                {describeRack({ configuration: rack, price })}
+                <span className="review-dimensions">Outside dimensions {dimensions[index].across} in across × {dimensions[index].high} in high × {dimensions[index].depth} in deep</span>
+              </li>;
             })}
           </ul>}
           <dl className="price-lines">
-            <div><dt>{multiple ? 'Racks' : 'Rack'} &amp; accessories subtotal</dt><dd>{dollars.format(subtotal)}</dd></div>
-            <div><dt>Estimated delivery</dt><dd aria-live="polite">{fee === undefined
-              ? busy && step === 'delivery' ? 'Calculating…' : canEstimate && !estimateError ? 'Calculate below' : 'To be confirmed'
+            <div><dt>Rack subtotal</dt><dd>{dollars.format(subtotal)}</dd></div>
+            <div><dt>Delivery</dt><dd aria-live="polite">{fee === undefined
+              ? busy && step === 'delivery' ? 'Calculating…' : canEstimate && !estimateError ? 'Not calculated yet' : 'To be confirmed'
               : dollars.format(fee / 100)}</dd></div>
-            <div className="price-total"><dt>Estimated total</dt><dd>{totalCents === undefined ? 'Pending delivery' : dollars.format(totalCents / 100)}</dd></div>
+            <div className="price-total"><dt>Total with delivery</dt><dd>{totalCents === undefined ? 'Waiting on address' : dollars.format(totalCents / 100)}</dd></div>
             {depositCents > 0 && totalCents !== undefined && <>
               <div><dt>Estimated deposit after confirmation</dt><dd>{dollars.format(depositCents / 100)}</dd></div>
               <div><dt>Estimated balance at delivery</dt><dd>{dollars.format((totalCents - depositCents) / 100)}</dd></div>
             </>}
           </dl>
+          {fee !== undefined && <p className="layout-help">Delivery and total are estimates.</p>}
         </aside>
         <div className="checkout-fields">
           {step === 'delivery' ? <>
-            <p>Serving <strong>{settings.serviceArea}</strong>.{settings.buildLeadTime && <> {settings.buildLeadTime}</>}</p>
-            {canEstimate && <p>{settings.delivery.freeMiles > 0 && `The first ${settings.delivery.freeMiles} road miles are free. `}
-              {dollars.format(settings.delivery.extraMileRate)} per {settings.delivery.freeMiles > 0 ? 'additional ' : ''}road mile.</p>}
+            <p>{settings.serviceArea === defaultShop.serviceArea ? 'Leander-area delivery available.' : `We deliver to ${settings.serviceArea}.`}{settings.buildLeadTime && <> {settings.buildLeadTime}</>}</p>
+            {canEstimate && <p>{settings.delivery.freeMiles > 0 && `First ${settings.delivery.freeMiles} driving miles are free, then `}
+              {rateDollars.format(settings.delivery.extraMileRate)} per {settings.delivery.freeMiles > 0 ? 'additional ' : 'driving '}mile.</p>}
             <form key="delivery" className="delivery-form" onSubmit={finishDelivery}>
               <fieldset className="address-fields" disabled={busy}>
-                <legend>Delivery address</legend>
+                <legend>Where should we bring it?</legend>
                 <label className="delivery-field">Street address
                   <input name="street" autoComplete="shipping address-line1" required pattern={'.*\\S.*'} maxLength={160}
                     value={address.street} onChange={(event) => changeAddress('street', event.target.value)} />
@@ -214,7 +221,7 @@ export function OrderRequest({ racks, subtotal, revision, settings, canEstimate,
                       value={address.state} onChange={(event) => changeAddress('state', event.target.value)} />
                   </label>
                   <label className="delivery-field">ZIP code
-                    <input name="zip" autoComplete="shipping postal-code" inputMode="numeric" required pattern="[0-9]{5}(-[0-9]{4})?"
+                    <input name="zip" autoComplete="shipping postal-code" inputMode="numeric" required title="Enter a valid ZIP code." pattern="[0-9]{5}(-[0-9]{4})?"
                       maxLength={10} value={address.zip} onChange={(event) => changeAddress('zip', event.target.value)} />
                   </label>
                 </div>
@@ -225,15 +232,15 @@ export function OrderRequest({ racks, subtotal, revision, settings, canEstimate,
               </fieldset>
               <div className="delivery-estimate">
                 {canEstimate && fee === undefined && <button type="submit" value="estimate" className="delivery-action" disabled={busy}>
-                  {busy ? 'Calculating delivery…' : estimateError ? 'Try delivery estimate again' : 'Calculate delivery estimate'}
+                  {busy ? 'Calculating delivery…' : estimateError ? 'Try again' : 'Calculate delivery'}
                 </button>}
                 <div role="status" ref={estimateStatus} tabIndex={-1}>
                   {fee !== undefined && totalCents !== undefined && <dl className="price-lines delivery-estimate-result">
-                    <div><dt>Estimated delivery</dt><dd>{dollars.format(fee / 100)}</dd></div>
-                    <div className="price-total"><dt>Estimated total</dt><dd>{dollars.format(totalCents / 100)}</dd></div>
+                    <div><dt>Delivery</dt><dd>{dollars.format(fee / 100)}</dd></div>
+                    <div className="price-total"><dt>Total with delivery</dt><dd>{dollars.format(totalCents / 100)}</dd></div>
                   </dl>}
-                  {estimateError && <p>{estimateError} {canSubmit && 'Your builder can confirm the fee after you send the request.'}</p>}
-                  {!canEstimate && <p>Your builder will confirm the delivery fee after reviewing your address.</p>}
+                  {estimateError && <p>{estimateError} {canSubmit && <><a className="text-link" href="#consult">Get in touch</a> or send your request and we’ll check the fee.</>}</p>}
+                  {!canEstimate && <p>We’ll confirm the delivery fee after we check your address.</p>}
                 </div>
               </div>
               {canSubmit && <DeliveryPreferences timezone={settings.timezone} windows={windows ?? []} loading={loadingWindows || (!windows && !windowsError)}
@@ -241,23 +248,22 @@ export function OrderRequest({ racks, subtotal, revision, settings, canEstimate,
               <div className="checkout-actions">
                 {canSubmit && (!canEstimate || quote || estimateError) && <button type="submit" value="review"
                   className="delivery-action" disabled={busy}>Review order request</button>}
-                {!canSubmit && <button type="button" className="text-button" onClick={configure} disabled={busy}>Back to configuration</button>}
+                {!canSubmit && <button type="button" className="text-button" onClick={configure} disabled={busy}>Back to your rack</button>}
               </div>
             </form>
           </> : <>
             <div className="checkout-destination">
               <div>
-                <h3>Delivery address</h3>
+                <h3>Delivery</h3>
                 <p>{address.street}{address.unit && `, ${address.unit}`}<br />{address.city}, {address.state} {address.zip}</p>
                 {address.notes && <p className="delivery-notes">{address.notes}</p>}
-                <h3>Delivery preferences</h3>
+                <h3>{choices.length > 1 ? 'Preferred delivery times' : 'Preferred delivery time'}</h3>
                 {choices.length ? <ol>{choices.map((choice) =>
                   <li key={choice}>{describeDeliveryPreference(choice, windows ?? [])}</li>)}</ol>
-                  : <p>Arrange a time with the builder</p>}
+                  : <p>We’ll work out a time with you.</p>}
               </div>
               <button type="button" className="text-button" onClick={editDelivery} disabled={busy}>Edit delivery</button>
             </div>
-            {estimateError && <p role="status">{estimateError} Your builder will follow up about the fee.</p>}
             <form key="review" className="consult-form" onSubmit={submit} onChange={(event) => {
               const fields = new FormData(event.currentTarget);
               setContact({
@@ -267,7 +273,7 @@ export function OrderRequest({ racks, subtotal, revision, settings, canEstimate,
               });
             }}>
               <fieldset className="address-fields" disabled={busy}>
-                <legend>Contact details</legend>
+                <legend>Your contact details</legend>
                 <label className="delivery-field">Name<input name="name" autoComplete="name" required maxLength={100} defaultValue={contact.name} /></label>
                 <div className="consult-contact">
                   <label className="delivery-field">Email<input name="email" type="email" autoComplete="email" required maxLength={254} defaultValue={contact.email} /></label>
@@ -276,20 +282,20 @@ export function OrderRequest({ racks, subtotal, revision, settings, canEstimate,
                 <DiscoveryField defaultValue={contact.discovery} />
                 <input type="text" name="website" tabIndex={-1} autoComplete="off" defaultValue={contact.website} hidden />
               </fieldset>
-              <p className="request-payment-note"><strong>No payment is due today.</strong> Your builder will follow up with a quote and confirm the rack details, delivery, and any payment arrangements with you before building.</p>
+              <p className="request-payment-note"><strong>No payment is collected when you send this request.</strong> We’ll confirm the final details and any required deposit before starting your build.</p>
               {error && <div ref={submissionError} tabIndex={-1} role="alert" className="checkout-error">
                 <p>{error}</p>
-                {error.startsWith('Your delivery quote expired') && <button type="button" className="text-button" onClick={() => {
+                {error === deliveryEstimateExpired && <button type="button" className="text-button" onClick={() => {
                   setQuote(undefined);
                   setEstimateError('');
                   editDelivery();
                 }}>Recalculate delivery</button>}
-                {error.startsWith('A selected delivery') && <button type="button" className="text-button" onClick={() => {
+                {error === deliveryTimeUnavailable && <button type="button" className="text-button" onClick={() => {
                   void refreshWindows();
                   editDelivery();
-                }}>Update delivery preferences</button>}
+                }}>Choose another time</button>}
               </div>}
-              <button className="delivery-action" disabled={busy}>{busy ? 'Sending request…' : 'Submit order request'}</button>
+              <button className="delivery-action" disabled={busy}>{busy ? 'Sending request…' : multiple ? 'Request my racks' : 'Request my rack'}</button>
             </form>
           </>}
         </div>

@@ -2,7 +2,7 @@ import { lazy, Suspense, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Configurator } from './components/Configurator';
 import { CustomerOffer } from './components/CustomerOffer';
-import { defaultShop, requestJson } from './config/shop';
+import { defaultShop, requestJson, totesAndTimberPageTitle } from './config/shop';
 import type { Storefront } from './config/shop';
 import { captureVisit } from './visit';
 import { enableRackCarousels } from './rack-carousel';
@@ -23,12 +23,12 @@ function PaymentPage({ token }: { token: string }) {
     setStatus('');
     try {
       const result = await requestJson<{ paid?: boolean; url?: string; test?: boolean }>('/api/checkout', { token });
-      if (result.paid) setStatus('This order is already paid.');
+      if (result.paid) setStatus('We’ve already received payment for this order.');
       else if (result.url && result.test) {
         setStatus('Stripe is in test mode. Use a test card only.');
         setCheckoutUrl(result.url);
       } else if (result.url) location.assign(result.url);
-      else setStatus('Stripe is still processing this payment. Check again shortly.');
+      else setStatus('Stripe is still checking this payment. Try again in a moment.');
     } catch (error) {
       setStatus((error as Error).message);
     } finally {
@@ -38,7 +38,7 @@ function PaymentPage({ token }: { token: string }) {
 
   return <main className="payment-page store-section">
     <h1>Pay for your rack order</h1>
-    <p>Open Stripe Checkout to review your confirmed order total and pay securely.</p>
+    <p>Review your confirmed total and pay through Stripe.</p>
     {!checkoutUrl && <button className="delivery-action" disabled={busy} onClick={openCheckout}>{busy ? 'Opening…' : 'Continue to Stripe'}</button>}
     {status && <p role="status">{status}</p>}
     {checkoutUrl && <a className="delivery-action" href={checkoutUrl} rel="noreferrer">Open Stripe test checkout</a>}
@@ -50,7 +50,7 @@ function PrivatePage({ path }: { path: string }) {
   if (path.startsWith('/pay/')) return <PaymentPage token={path.slice(5)} />;
   if (path.startsWith('/quote/')) return <CustomerOffer token={path.slice(7)} />;
   if (path === '/order-received') return <main className="payment-page store-section">
-    <h1>Checkout complete</h1><p>Stripe will process your payment. Your builder will see the result on your order.</p><a href="/">Return to the storefront</a>
+    <h1>Payment status</h1><p>If you paid through Stripe, we’ll see the result once Stripe has finished processing it.</p><a href="/">Back to the shop</a>
   </main>;
   return null;
 }
@@ -65,12 +65,12 @@ if (import.meta.env.MODE === 'storefront') {
   captureVisit();
   void requestJson<Storefront>('/api/shop').then((shop) => {
     document.documentElement.style.setProperty('--accent', shop.settings.accent);
-    document.title = `${shop.settings.name} | ${shop.settings.title}`;
+    document.title = shop.settings.name === defaultShop.name ? totesAndTimberPageTitle : `${shop.settings.title} | ${shop.settings.name}`;
     createRoot(root).render(<Configurator shop={shop} />);
   }).catch(() => {
     const message = document.createElement('p');
     message.className = 'workspace';
-    message.textContent = 'The configurator is temporarily unavailable. Refresh this page to try again.';
+    message.textContent = 'We couldn’t load the rack designer. Refresh the page and try again.';
     message.setAttribute('role', 'status');
     root.append(message);
   });

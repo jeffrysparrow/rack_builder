@@ -1,4 +1,4 @@
-import { deliveryPreferenceWindows, MAX_DELIVERY_PREFERENCES } from '../src/config/shop';
+import { deliveryPreferenceWindows, deliveryTimeUnavailable, MAX_DELIVERY_PREFERENCES } from '../src/config/shop';
 import type { AdminSettings, DeliveryWindow, SavedOrder, SavedInquiry } from '../src/config/shop';
 import { HttpError } from './platform-services';
 
@@ -79,7 +79,7 @@ export async function requestedWindows(env: Environment, shop: Shop, value: unkn
   const { results } = await windowsQuery(env, shop);
   return ids.map((id) => {
     const window = results.find((window) => window.id === id);
-    if (!window) throw new HttpError(409, 'A selected delivery window is no longer available. Refresh your choices and try again.');
+    if (!window) throw new HttpError(409, deliveryTimeUnavailable);
     return window;
   });
 }
@@ -90,7 +90,7 @@ export async function requestedQuotePreferences(env: Environment, shop: Shop, va
   const { results } = await windowsQuery(env, shop);
   const windows = ids.flatMap((id) => {
     const matches = deliveryPreferenceWindows(id, results);
-    if (!matches.length) throw new HttpError(409, 'A selected delivery day or window is no longer available. Refresh your choices and try again.');
+    if (!matches.length) throw new HttpError(409, deliveryTimeUnavailable);
     return matches;
   });
   if (new Set(windows.map((window) => window.id)).size !== windows.length) {

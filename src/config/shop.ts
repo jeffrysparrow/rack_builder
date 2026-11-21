@@ -8,12 +8,14 @@ import type { CustomerReview } from './reviews';
 
 export const MAX_ORDER_RACKS = 20;
 export const MAX_DELIVERY_PREFERENCES = 3;
+export const deliveryEstimateExpired = 'Your delivery estimate expired or the address changed. Calculate delivery again.';
+export const deliveryTimeUnavailable = 'A time or date you picked is no longer available. Choose an updated delivery time.';
 
 export const defaultShop = {
   name: 'Totes & Timber',
-  title: 'Custom wooden tote racks',
-  description: 'Get your garage or shed organized with a rack sized for your 27-gallon totes.',
-  serviceArea: 'Austin and nearby areas',
+  title: 'Custom tote racks, built for your garage.',
+  description: 'Pick your tote brand, choose your size, and see the measurements and price as you go.',
+  serviceArea: 'Leander and nearby areas',
   buildLeadTime: '',
   publicEmail: '',
   accent: '#344b37',
@@ -23,6 +25,8 @@ export const defaultShop = {
   deposit: defaultDeposit,
   timezone: 'America/Chicago',
 };
+
+export const totesAndTimberPageTitle = 'Custom Garage Tote Racks in Leander, TX | Totes & Timber';
 
 export type ShopSettings = typeof defaultShop;
 export type AdminSettings = ShopSettings & { deliveryOrigin: string; contactEmail: string };
@@ -79,10 +83,10 @@ export async function requestJson<T>(path: string, body?: unknown, method = body
     ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
   });
   if (!response.headers.get('Content-Type')?.includes('application/json')) {
-    throw new Error('The service is unavailable. Try refreshing the page.');
+    throw new Error('We couldn’t load that. Refresh the page and try again.');
   }
   const data = await response.json();
-  if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'The request could not be completed.');
+  if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Something went wrong. Please try again.');
   return data as T;
 }
 
@@ -104,7 +108,7 @@ export function describeRack({ configuration, price }: Pick<SavedRack, 'configur
     formatRackSize(configuration),
     `Fits ${toteProfiles[getRackToteType(configuration)].label}`,
     top,
-    price.wheelQuantity ? `${price.wheelQuantity} casters` : 'No casters',
+    price.wheelQuantity ? `${price.wheelQuantity} locking wheels` : 'No wheels',
     price.toteQuantity ? `${price.toteQuantity} totes included` : 'No totes included',
   ].join(' · ');
 }

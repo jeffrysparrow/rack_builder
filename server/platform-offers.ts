@@ -1,5 +1,6 @@
 import { snapshotPayment } from '../src/config/shop';
 import type { OrderSnapshot, PublicOffer, SavedOffer } from '../src/config/shop';
+import { emailDollars } from './platform-notifications';
 import { getInquiry } from './platform-inquiries';
 import type { Environment, Shop } from './platform-data';
 import { getOrder, notifyOrderRequest } from './platform-orders';
@@ -16,7 +17,7 @@ const offerFrom = `FROM quote_offers v LEFT JOIN orders o ON o.shop_id = v.shop_
 async function getOffer(env: Environment, shop: Shop, token: string) {
   const row = await env.DB.prepare(`SELECT ${offerColumns} ${offerFrom} WHERE v.shop_id = ? AND v.token = ?`)
     .bind(shop.id, requestId(token)).first<OfferRow>();
-  if (!row) throw new HttpError(404, 'This quote link was not found.');
+  if (!row) throw new HttpError(404, 'We couldn’t find this quote. Get in touch for a new link.');
   return row;
 }
 
@@ -70,8 +71,8 @@ export async function emailOffer(env: Environment, shop: Shop, token: string, or
   const snapshot = JSON.parse(row.snapshot) as OrderSnapshot;
   const emailStatus = await sendEmail(env.RESEND_API_KEY, env.CONSULT_FROM_EMAIL, 'quote-offer-' + row.token, {
     to: snapshot.customer.email, reply_to: shop.settings.publicEmail || shop.settings.contactEmail || undefined,
-    subject: `Your rack quote from ${shop.settings.name}`,
-    text: `Review and accept your rack quote for $${(snapshot.totalCents / 100).toFixed(2)}.\n\n${origin}/quote/${row.token}`,
+    subject: `Your rack quote is ready · ${shop.settings.name}`,
+    text: `Your rack quote is ready. Review the details and accept the quote for ${emailDollars(snapshot.totalCents)} when you’re ready.\n\n${origin}/quote/${row.token}`,
   }, shop.settings.name);
   await env.DB.prepare(`UPDATE quote_offers SET email_status = ? WHERE shop_id = ? AND token = ? AND email_status != 'sent'`)
     .bind(emailStatus, shop.id, row.token).run();
@@ -89,9 +90,9 @@ export async function publicOffer(env: Environment, shop: Shop, token: string): 
 
 export async function acceptOffer(env: Environment, shop: Shop, token: string) {
   const row = await getOffer(env, shop, token);
-  if (row.cancelledAt) throw new HttpError(409, 'This order was cancelled. Contact your builder.');
+  if (row.cancelledAt) throw new HttpError(409, 'This order was cancelled. Get in touch if you have questions.');
   if (row.acceptedToken === token) return { id: row.orderId };
-  if (!row.latest || row.orderId || row.expiresAt <= Date.now()) throw new HttpError(409, 'This quote is no longer available. Contact your builder.');
+  if (!row.latest || row.orderId || row.expiresAt <= Date.now()) throw new HttpError(409, 'This quote is no longer available. Get in touch for an updated quote.');
   const id = crypto.randomUUID();
   const result = await env.DB.prepare(`INSERT INTO orders
     (id, shop_id, snapshot, qualified, quote_inquiry_id, quote_offer_token, request_email_status, receipt_email_status)
@@ -104,7 +105,7 @@ export async function acceptOffer(env: Environment, shop: Shop, token: string) {
   if (!result.meta.changes) {
     const latest = await getOffer(env, shop, token);
     if (latest.acceptedToken === token) return { id: latest.orderId };
-    throw new HttpError(409, 'This quote is no longer available. Contact your builder.');
+    throw new HttpError(409, 'This quote is no longer available. Get in touch for an updated quote.');
   }
   const order = await getOrder(env, shop, id);
   await Promise.all([notifyOrderRequest(env, shop, order), notifyOrderRequest(env, shop, order, true)]);

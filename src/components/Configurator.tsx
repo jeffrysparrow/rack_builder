@@ -4,14 +4,14 @@ import { track } from '../analytics';
 import { OrderRequest, PurchaseSteps } from './OrderRequest';
 import { CustomerReviews } from './CustomerReviews';
 import { StorefrontDetails } from './StorefrontDetails';
-import { calculateRack, defaultConfiguration, finishes, formatCutLength, getRackToteType } from '../config/rack';
+import { calculateRack, defaultConfiguration, finishes, formatCutLength, getRackToteType, outsideDimensions } from '../config/rack';
 import type { RackConfiguration } from '../config/rack';
 import { estimateOrderPrice, estimatePrice } from '../config/pricing';
 import { deliveryToteBrand, deliveryToteType, isToteType, toteProfiles } from '../config/totes';
 import { carouselImageSizes, rackPhotoGroups, rackPhotos, rackPhotoSource } from '../config/gallery';
 import { shareConfiguration, sharedConfiguration } from '../config/share';
 
-import { formatRackSize, MAX_ORDER_RACKS } from '../config/shop';
+import { defaultShop, formatRackSize, MAX_ORDER_RACKS } from '../config/shop';
 import type { Storefront } from '../config/shop';
 const Studio = lazy(() => import('../three/Studio').then(({ Studio }) => ({ default: Studio })));
 
@@ -20,7 +20,7 @@ class ViewerBoundary extends Component<{ children: ReactNode }, { failed: boolea
   static getDerivedStateFromError() { return { failed: true }; }
   render() {
     return this.state.failed
-      ? <div className="viewer-error" role="status"><strong>3D preview unavailable</strong><p>You can still configure and request a rack using the options and finished dimensions.</p><a href="/rack-builds/" className="text-link">See completed racks</a></div>
+      ? <div className="viewer-error" role="status"><p>The 3D preview isn’t available on this device. You can still design your rack and get a price.</p></div>
       : this.props.children;
   }
 }
@@ -88,6 +88,9 @@ export function Configurator({ shop }: { shop: Storefront }) {
   const [shareStatus, setShareStatus] = useState('');
   const [shareLink, setShareLink] = useState('');
   const canCheckout = consultAvailable || deliveryAvailable;
+  useEffect(() => {
+    if (consultAvailable && location.hash === '#consult') document.getElementById('consult')?.scrollIntoView();
+  }, [consultAvailable]);
   const [checkingOut, setCheckingOut] = useState(() => canCheckout && location.hash === '#quote');
   const configureHeading = useRef<HTMLHeadingElement>(null);
   const configureSection = useRef<HTMLDivElement>(null);
@@ -131,6 +134,8 @@ export function Configurator({ shop }: { shop: Storefront }) {
   }
   const layouts = useMemo(() => racks.map((rack) => calculateRack(rack, build)), [racks, build]);
   const layout = layouts[activeIndex];
+  const dimensions = layouts.map(outsideDimensions);
+  const outside = dimensions[activeIndex];
   const price = estimateOrderPrice(racks, rates, build);
   const capacity = config.columns * config.rows;
   const rackPrice = estimatePrice(config, rates, build);
@@ -173,13 +178,13 @@ export function Configurator({ shop }: { shop: Storefront }) {
     try {
       const lines = racks.map((rack, index) => {
         const top = finishes.find(({ id }) => id === rack.topMaterial)?.label;
-        return `Rack ${index + 1}: ${formatRackSize(rack)} · ${toteProfiles[getRackToteType(rack)].label} · ${top} · ${rack.includeCasters ? 'Casters' : 'No casters'} · ${rack.includeTotesWithDelivery ? 'Totes included' : 'Rack only'} · ${dollars.format(estimatePrice(rack, rates, build).total)}`;
+        return `Rack ${index + 1}: ${formatRackSize(rack)} · ${toteProfiles[getRackToteType(rack)].label} · ${top} · ${rack.includeCasters ? 'Locking wheels' : 'No wheels'} · ${rack.includeTotesWithDelivery ? 'Totes included' : 'Rack only'} · ${dollars.format(estimatePrice(rack, rates, build).total)}`;
       });
       await navigator.clipboard.writeText([settings.name + ' rack estimate', ...lines,
-        `Rack & accessories total: ${dollars.format(price.total)} before delivery`].join('\n'));
+        `Rack subtotal: ${dollars.format(price.total)} before delivery`].join('\n'));
       setCopyStatus('Rack estimate copied.');
     } catch {
-      setCopyStatus('Couldn’t copy the estimate. You can share a screenshot of your order.');
+      setCopyStatus('We couldn’t copy your price. You can still share the link to your rack.');
     }
   }
 
@@ -192,9 +197,9 @@ export function Configurator({ shop }: { shop: Storefront }) {
     try {
       await navigator.clipboard.writeText(link);
       setShareLink('');
-      setShareStatus('Configuration link copied.');
+      setShareStatus('Link copied!');
     } catch {
-      setShareStatus('Copy the configuration link below.');
+      setShareStatus('Copy the link below to share your rack.');
       setShareLink(link);
     }
   }
@@ -203,8 +208,8 @@ export function Configurator({ shop }: { shop: Storefront }) {
     <header className="site-header storefront-header">
       <a className="identity" href="/"><span className="brand-icon"><Icon name="rack" /></span><span>{settings.name}</span></a>
       <nav className="site-nav" aria-label="Main navigation">
-        <a href="#configure" onClick={(event) => { event.preventDefault(); returnToConfiguration(); }}>Configure</a>
-        <a href="/rack-builds/">Rack photos</a>
+        <a href="#configure" onClick={(event) => { event.preventDefault(); returnToConfiguration(); }}>Design a rack</a>
+        <a href="/rack-builds/">Our work</a>
         {reviews.length > 0 && <a href="#reviews">Reviews</a>}
         {consultAvailable && <a href="#consult">Contact</a>}
       </nav>
@@ -212,10 +217,11 @@ export function Configurator({ shop }: { shop: Storefront }) {
     <main className={`workspace storefront-workspace${checkingOut ? ' checking-out' : ''}`} id="product">
       <section className="storefront-hero" ref={hero} hidden={checkingOut}>
         <div className="hero-copy">
-          <p className="hero-service">{settings.serviceArea}</p>
+          <p className="hero-service">{settings.name === defaultShop.name && settings.serviceArea === defaultShop.serviceArea ? 'Hand-built in the Leander area' : settings.serviceArea}</p>
           <h1>{settings.title}</h1>
-          <p className="hero-description">{settings.description.replace('Keep it open or add a solid top for a work surface.', '').trim()}</p>
-          <a href="#configure" className="hero-cta" onClick={(event) => { event.preventDefault(); returnToConfiguration(); }}>Configure your rack</a>
+          <p className="hero-description">{settings.description}</p>
+          {settings.name === defaultShop.name && <p className="hero-aside">Less tote Jenga. More garage.</p>}
+          <a href="#configure" className="hero-cta" onClick={(event) => { event.preventDefault(); returnToConfiguration(); }}>Design your rack</a>
         </div>
         <div className="hero-photo">
           <img {...heroImage} alt={featuredRack.alt} fetchPriority="high" sizes="(max-width: 900px) 100vw, 54vw" />
@@ -224,34 +230,34 @@ export function Configurator({ shop }: { shop: Storefront }) {
       <div hidden={checkingOut}>
         {consultAvailable && <PurchaseSteps current="configure" />}
         <div className="builder" id="configure" ref={configureSection}>
-          <section className="viewer" aria-label="Interactive rack preview">
+          <section className="viewer" aria-label="Your rack in 3D">
             <div className="studio">
               <ViewerBoundary><Suspense fallback={<p className="viewer-error" role="status">Loading 3D preview…</p>}>
                 <Studio layout={layout} reset={reset} zoom={zoom} />
               </Suspense></ViewerBoundary>
             </div>
             <div className="viewer-heading">
-              <span className="viewer-label">3D preview</span>
+              <span className="viewer-label">Your rack in 3D</span>
               <span className="viewer-size">{formatRackSize(config)}{multiple && ` · Rack ${activeIndex + 1} of ${racks.length}`}</span>
             </div>
             <div className="viewer-footer">
-              <span className="viewer-help"><Icon name="mouse" /><span className="mouse-hint">Drag to rotate</span><span className="touch-hint">Swipe sideways to rotate</span></span>
+              <span className="viewer-help"><Icon name="mouse" /><span className="mouse-hint">Drag to spin</span><span className="touch-hint">Swipe to spin</span></span>
               <div className="viewer-actions">
                 <button className="viewer-button zoom-button" type="button" aria-label="Zoom out" title="Zoom out"
                   onClick={() => setZoom((step) => step - 1)}>−</button>
                 <button className="viewer-button zoom-button" type="button" aria-label="Zoom in" title="Zoom in"
                   onClick={() => setZoom((step) => step + 1)}>+</button>
-                <button className="viewer-button" type="button" aria-label="Reset camera" title="Reset camera"
+                <button className="viewer-button" type="button" aria-label="Reset rack view" title="Reset view"
                   onClick={() => setReset((current) => current + 1)}><Icon name="reset" /><span>Reset view</span></button>
               </div>
             </div>
           </section>
-          <aside className="settings" aria-label="Rack configuration" onChange={() => {
+          <aside className="settings" aria-label="Rack design" onChange={() => {
             if (consultAvailable) track('configurator_started');
           }}>
             <section className="setting-section config-intro">
-              <h2 ref={configureHeading} tabIndex={-1}>{multiple ? `Configure rack ${activeIndex + 1}` : 'Configure your rack'}</h2>
-              {shared.changed && <p role="status" className="layout-help">Some options in this link were unavailable. Review your configuration before continuing.</p>}
+              <h2 ref={configureHeading} tabIndex={-1}>{multiple ? `Make rack ${activeIndex + 1} yours` : 'Make it yours'}</h2>
+              {shared.changed && <p role="status" className="layout-help">Some options from this link are no longer available. Check your rack before continuing.</p>}
               {multiple && <ul className="rack-options" aria-label="Racks in your order">
                 {racks.map((rack, index) => <li key={index}>
                   <button type="button" aria-pressed={index === activeIndex}
@@ -261,7 +267,7 @@ export function Configurator({ shop }: { shop: Storefront }) {
                   </button>
                 </li>)}
               </ul>}
-              <label className="tote-field" htmlFor="tote-brand">Tote brand</label>
+              <label className="tote-field" htmlFor="tote-brand">Which totes do you use?</label>
               <select className="tote-select" id="tote-brand" value={toteType}
                 disabled={config.includeTotesWithDelivery} aria-describedby="tote-fit-help"
                 onChange={(event) => {
@@ -272,32 +278,33 @@ export function Configurator({ shop }: { shop: Storefront }) {
               </select>
               <p className="layout-help" id="tote-fit-help">
                 {config.includeTotesWithDelivery
-                  ? `Your rack is sized for the 27-gallon ${deliveryToteBrand} totes in this order.`
-                  : 'Your rack is sized for the selected brand’s 27-gallon tote model.'}
+                  ? `We’ll size your rack for the 27-gallon ${deliveryToteBrand} totes you’ve added.`
+                  : 'Tote sizes vary by brand. Make sure you choose yours.'}
               </p>
             </section>
             <section className="setting-section">
-              <div className="section-heading"><h2>Rack size</h2><span className="capacity">{capacity} tote spaces</span></div>
+              <div className="section-heading"><h2>How many totes?</h2><span className="capacity" aria-live="polite">{capacity} tote spaces</span></div>
               <div className="stepper-grid">
                 <Stepper label="Totes high" value={config.rows} minimum={minimumRackSize.rows} maximum={build.maxRows} onChange={(delta) => changeLayout('rows', delta)} />
                 <Stepper label="Totes across" value={config.columns} minimum={minimumRackSize.columns} maximum={build.maxColumns} onChange={(delta) => changeLayout('columns', delta)} />
               </div>
-              <p className="layout-help">Frame price <strong>{dollars.format(rackPrice.frame)}</strong></p>
+              <p className="layout-help">Rack frame <strong>{dollars.format(rackPrice.frame)}</strong></p>
             </section>
             <section className="setting-section dimensions">
-              <h2>Finished outside dimensions{multiple && ` · Rack ${activeIndex + 1}`}</h2>
+              <h2>Outside dimensions{multiple && ` · Rack ${activeIndex + 1}`}</h2>
               <dl className="dimension-grid" aria-live="polite">
-                <div><dt>Width</dt><dd>{Math.ceil(layout.cuts.width)}<small> in</small></dd></div>
-                <div><dt>Height</dt><dd>{Math.ceil(layout.cuts.height)}<small> in</small></dd></div>
-                <div><dt>Depth</dt><dd>{Math.ceil(layout.depth / .0254)}<small> in</small></dd></div>
+                <div><dt>Across</dt><dd>{outside.across}<small> in</small></dd></div>
+                <div><dt>High</dt><dd>{outside.high}<small> in</small></dd></div>
+                <div><dt>Depth</dt><dd>{outside.depth}<small> in</small></dd></div>
               </dl>
               {multiple && <p className="layout-help"><strong>{Math.ceil(sideBySideWidth)} in wide</strong> with all {racks.length} racks side by side.</p>}
-              <p className="layout-help">Rounded up to the nearest inch. Height includes the selected top and casters. Depth includes the rear bracing. Allow clearance for totes and access.</p>
+              <p className="layout-help">Finished measurements, rounded up to the nearest inch. Leave room in front to slide totes out.</p>
+              <p className="layout-help">Height includes the top and wheels you select. Depth includes the rear bracing.</p>
             </section>
             <section className="setting-section">
               <fieldset>
-                <legend>Top panel</legend>
-                <p className="layout-help">Add a solid top for extra storage or a work surface.</p>
+                <legend>Add a top</legend>
+                <p className="layout-help">Add a work surface, or leave the top open.</p>
                 <div className="finish-list">
                   {finishes.map((finish) => <label className="finish-option" key={finish.id}>
                     <span className={`swatch ${finish.id}`} style={{ backgroundColor: finish.color }} />
@@ -313,66 +320,72 @@ export function Configurator({ shop }: { shop: Storefront }) {
               </fieldset>
             </section>
             <section className="setting-section accessories">
-              <h2>Accessories</h2>
-              <Toggle label="Locking swivel casters" description={`${layout.casterCount} wheels · +${dollars.format(layout.casterCount * rates.caster)}`}
+              <h2>Wheels &amp; extras</h2>
+              <Toggle label="Add locking wheels" description={`${layout.casterCount} wheels · +${dollars.format(layout.casterCount * rates.caster)}`}
                 checked={config.includeCasters} onChange={(value) => update('includeCasters', value)} />
-              {canAddTotes ? <Toggle label="Add totes with delivery"
-                description={`${capacity} ${deliveryToteBrand} totes · +${dollars.format(capacity * rates.tote)}`}
+              {canAddTotes ? <Toggle label="Need the totes, too?"
+                description={`27-gallon ${deliveryToteBrand} only · ${capacity} for +${dollars.format(capacity * rates.tote)}`}
                 checked={config.includeTotesWithDelivery} onChange={(value) => update('includeTotesWithDelivery', value)} />
-                : <p className="layout-help">Totes supplied with delivery are 27-gallon {deliveryToteBrand}. Select that brand to add totes.</p>}
-              <Toggle label="Show totes in preview" description="Preview only" checked={config.includeBins}
+                : <p className="layout-help">We only supply 27-gallon {deliveryToteBrand} totes. To add totes, choose {deliveryToteBrand} for your rack.</p>}
+              <Toggle label="Show totes in 3D" description="Just for the preview. No totes are added to your order." checked={config.includeBins}
                 onChange={(value) => update('includeBins', value)} />
             </section>
             <section className="setting-section pricing" aria-labelledby="pricing-heading">
               <div className="rack-order-actions">
-                <button type="button" className="text-button" disabled={racks.length >= MAX_ORDER_RACKS} onClick={addRack}>Add another rack</button>
+                <button type="button" className="text-button" disabled={racks.length >= MAX_ORDER_RACKS} onClick={addRack}>{multiple ? 'Add another rack' : 'Add a second rack'}</button>
                 {multiple && <button type="button" className="text-button" onClick={removeRack}>Remove rack {activeIndex + 1}</button>}
               </div>
-              <h2 id="pricing-heading">{multiple ? 'Order price breakdown' : 'Price breakdown'}</h2>
+              <h2 id="pricing-heading">Your price</h2>
               <dl className="price-lines">
                 <div><dt>{multiple ? 'Rack frames' : 'Rack frame'} · {orderCapacity} tote spaces</dt><dd>{dollars.format(price.frame)}</dd></div>
                 {price.top > 0 && <div><dt>Top panel</dt><dd>{dollars.format(price.top)}</dd></div>}
-                {price.wheelQuantity > 0 && <div><dt>Casters · {price.wheelQuantity}</dt><dd>{dollars.format(price.wheels)}</dd></div>}
+                {price.wheelQuantity > 0 && <div><dt>Locking wheels · {price.wheelQuantity}</dt><dd>{dollars.format(price.wheels)}</dd></div>}
                 {price.toteQuantity > 0 && <div><dt>Storage totes · {price.toteQuantity}</dt><dd>{dollars.format(price.totes)}</dd></div>}
-                <div className="price-total"><dt>{multiple ? 'Racks' : 'Rack'} &amp; accessories subtotal</dt><dd aria-live="polite">{dollars.format(price.total)}</dd></div>
+                <div className="price-total"><dt>Rack subtotal</dt><dd aria-live="polite">{dollars.format(price.total)}</dd></div>
               </dl>
               <div className={`configure-continue${pastHero && canCheckout ? ' is-sticky' : ''}`}>
-                <span className="mobile-subtotal"><strong>{dollars.format(price.total)}</strong><small>Before delivery</small></span>
+                <span className="mobile-subtotal"><strong>{dollars.format(price.total)}</strong><small>Delivery calculated next</small></span>
                 {canCheckout ? <button type="button" className="delivery-action" onClick={openCheckout}>
                   {consultAvailable ? 'Continue to delivery' : 'Estimate delivery'}
                 </button> : <button type="button" className="delivery-action" onClick={copyEstimate}>Copy rack estimate</button>}
               </div>
-              <button type="button" className="text-button share-config" onClick={copyConfiguration}>Share configuration</button>
+              <button type="button" className="text-button share-config" onClick={copyConfiguration}>{multiple ? 'Share these racks' : 'Share this rack'}</button>
               {copyStatus && <p className="layout-help" role="status">{copyStatus}</p>}
               {shareStatus && <p className="layout-help" role="status">{shareStatus}</p>}
-              {shareLink && <label className="delivery-field">Configuration link<input readOnly value={shareLink} onFocus={(event) => event.target.select()} /></label>}
+              {shareLink && <label className="delivery-field">Rack link<input readOnly value={shareLink} onFocus={(event) => event.target.select()} /></label>}
             </section>
           </aside>
         </div>
       </div>
-      {canCheckout && <OrderRequest racks={racks} subtotal={price.total} revision={revision} settings={settings}
+      {canCheckout && <OrderRequest racks={racks} dimensions={dimensions} subtotal={price.total} revision={revision} settings={settings}
         canEstimate={deliveryAvailable} canSubmit={consultAvailable} active={checkingOut} onConfigure={returnToConfiguration} />}
       <CustomerReviews reviews={reviews} />
       <section className="store-section storefront-photos" aria-labelledby="storefront-photos-heading">
-        <div className="store-section-heading"><h2 id="storefront-photos-heading">More completed builds</h2></div>
+        <div className="store-section-heading"><h2 id="storefront-photos-heading">Racks we’ve built</h2></div>
         {rackPhotoGroups.map(({ id, title, photos }) => <section className="rack-carousel" key={id} aria-labelledby={`storefront-photos-${id}`}>
           <div className="carousel-heading">
             <h3 id={`storefront-photos-${id}`}>{title}</h3>
             <div className="carousel-controls">
-              <button type="button" data-slide="-1" aria-label={`Previous photo in ${title}`} aria-controls={`storefront-track-${id}`}>‹</button>
-              <button type="button" data-slide="1" aria-label={`Next photo in ${title}`} aria-controls={`storefront-track-${id}`}>›</button>
+              <button type="button" data-slide="-1" aria-label={`Previous photo · ${title}`} aria-controls={`storefront-track-${id}`}>‹</button>
+              <button type="button" data-slide="1" aria-label={`Next photo · ${title}`} aria-controls={`storefront-track-${id}`}>›</button>
             </div>
           </div>
           <ul className="carousel-track" id={`storefront-track-${id}`}>
             {photos.map((photo) => {
               const { full, ...image } = rackPhotoSource(photo);
-              return <li key={photo.slug}><a href={full}><img {...image} alt={photo.alt} loading="lazy" decoding="async" sizes={carouselImageSizes} /></a></li>;
+              return <li key={photo.slug}><figure>
+                <a href={full}><img {...image} alt={photo.alt} loading="lazy" decoding="async" sizes={carouselImageSizes} /></a>
+                <figcaption>{photo.title}</figcaption>
+              </figure></li>;
             })}
           </ul>
         </section>)}
-        <a href="/rack-builds/" className="text-link">See all rack photos and options</a>
+        <div className="photo-links">
+          <a href="/rack-builds/" className="text-link">See more of our work</a>
+          {consultAvailable && <a href="#consult" className="text-link">Ask about a custom rack</a>}
+        </div>
       </section>
-      {consultAvailable && <StorefrontDetails racks={racks} />}
+      {consultAvailable && <StorefrontDetails racks={racks} publicEmail={settings.publicEmail} />}
       {import.meta.env.MODE === 'storefront' && <details className="settings cut-list">
         <summary id="cut-list-heading">2×4 cut list{multiple && ` · all ${racks.length} racks`}</summary>
         <table aria-labelledby="cut-list-heading">

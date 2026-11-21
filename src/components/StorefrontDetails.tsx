@@ -4,7 +4,7 @@ import type { RackConfiguration } from '../config/rack';
 import { getVisit } from '../visit';
 import { DiscoveryField } from './DiscoveryField';
 
-export function StorefrontDetails({ racks }: { racks: RackConfiguration[] }) {
+export function StorefrontDetails({ racks, publicEmail }: { racks: RackConfiguration[]; publicEmail: string }) {
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error' | 'invalid'>('idle');
 
   async function sendRequest(event: FormEvent<HTMLFormElement>) {
@@ -32,8 +32,8 @@ export function StorefrontDetails({ racks }: { racks: RackConfiguration[] }) {
 
   return (
     <section className="store-section consult-section" id="consult" aria-labelledby="consult-heading">
-      <div className="store-section-heading"><h2 id="consult-heading">Contact your builder</h2></div>
-      <p>Ask about delivery, tote fit, or a custom rack layout.</p>
+      <div className="store-section-heading"><h2 id="consult-heading">Have something different in mind?</h2></div>
+      <p>Different totes, tight space, or a custom setup? Tell us what you have in mind.</p>
       <form className="consult-form" onSubmit={sendRequest}>
         <div className="consult-contact">
           <label className="delivery-field">Email
@@ -43,19 +43,20 @@ export function StorefrontDetails({ racks }: { racks: RackConfiguration[] }) {
             <input type="tel" name="phone" autoComplete="tel" maxLength={40} required />
           </label>
         </div>
-        <label className="delivery-field">How can we help?
+        <label className="delivery-field">What are you thinking?
           <textarea name="details" rows={3} maxLength={2000} required
-            placeholder="Delivery questions, space dimensions, tote size, or a good time to call" />
+            placeholder="For example, tell us your tote brand and how much space you have" />
         </label>
         <DiscoveryField />
         <input type="text" name="website" tabIndex={-1} autoComplete="off" hidden />
         <button className="delivery-action" type="submit" disabled={status === 'sending'}>
-          {status === 'sending' ? 'Sending…' : 'Send a message'}
+          {status === 'sending' ? 'Sending message…' : 'Send message'}
         </button>
-        {status === 'sent' && <p role="status">Message received. Your builder will follow up.</p>}
+        {status === 'sent' && <p role="status">Message sent! We’ll get back to you.</p>}
         {status === 'invalid' && <p role="alert">Check your email and phone number, and include a message.</p>}
-        {status === 'error' && <p role="alert">Your message couldn’t be sent. Your details are still here, so you can try again.</p>}
+        {status === 'error' && <p role="alert">Your message didn’t go through. Please try again.</p>}
       </form>
+      {publicEmail && <p>Prefer email? <a className="text-link" href={`mailto:${publicEmail}`}>{publicEmail}</a></p>}
     </section>
   );
 }

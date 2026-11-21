@@ -2,12 +2,12 @@ import { calculateCutList, finishes } from '../src/config/rack';
 import type { RackConfiguration } from '../src/config/rack';
 import { estimatePrice } from '../src/config/pricing';
 import { isToteType } from '../src/config/totes';
-import { formatWindow, MAX_ORDER_RACKS, snapshotPayment } from '../src/config/shop';
+import { deliveryEstimateExpired, formatWindow, MAX_ORDER_RACKS, snapshotPayment } from '../src/config/shop';
 import type { DeliveryWindow, OrderSnapshot } from '../src/config/shop';
 import { leadAttribution } from './platform-attribution';
 import { orderColumns, orderData, requestedWindows, shopClock } from './platform-data';
 import type { Environment, OrderRow, Shop } from './platform-data';
-import { rackEmailSummary, sendRequestEmail } from './platform-notifications';
+import { emailDollars, rackEmailSummary, sendRequestEmail } from './platform-notifications';
 import { contactEmail, equal, hmac, HttpError, requestId, requiredText, sendEmail, streetAddress, stripe } from './platform-services';
 import type { Destination } from './platform-services';
 import { numberIn, record } from './platform-settings';
@@ -32,7 +32,7 @@ export async function verifyQuote(shop: Shop, destination: Destination, token: u
     if (Number(revision) === shop.revision && Number(expiration) > Date.now()
       && equal(signature, await quoteSignature(shop, destination, [revision, expiration, fee].join('.'), secret))) return Number(fee);
   }
-  throw new HttpError(409, 'Your delivery quote expired or the address changed. Calculate delivery again.');
+  throw new HttpError(409, deliveryEstimateExpired);
 }
 
 export function rackSnapshot(value: unknown, shop: Shop) {
@@ -112,8 +112,8 @@ export async function notifyOrderRequest(env: Environment, shop: Shop, row: Orde
   await sendRequestEmail(env, shop, receipt ? {
     id, table: 'orders', column: 'receipt_email_status', status: row.receiptEmailStatus, key: 'order-receipt-' + id,
     message: {
-      to: customer.email, reply_to: shop.settings.publicEmail || shop.settings.contactEmail || undefined, subject: `Order request received by ${shop.settings.name}`,
-      text: `Thanks, ${customer.name}. ${row.quoteInquiryId ? 'Your quote was accepted. Your builder will contact you to schedule delivery.' : 'Your builder will review your delivery preferences and follow up about payment.'}\n\n${rackEmailSummary(racks)}\nDelivery: $${(deliveryCents / 100).toFixed(2)}\n${row.quoteInquiryId ? 'Accepted' : 'Estimated'} total: $${(totalCents / 100).toFixed(2)}\n\nOrder reference: ${id.slice(0, 8).toUpperCase()}`,
+      to: customer.email, reply_to: shop.settings.publicEmail || shop.settings.contactEmail || undefined, subject: row.quoteInquiryId ? `We got your quote acceptance · ${shop.settings.name}` : `We got your rack request · ${shop.settings.name}`,
+      text: `Thanks, ${customer.name}. ${row.quoteInquiryId ? 'Thanks for accepting your quote. We’ll be in touch to schedule delivery.' : 'We’ll check the details and follow up about delivery and payment.'}\n\n${rackEmailSummary(racks)}\nDelivery: ${emailDollars(deliveryCents)}\n${row.quoteInquiryId ? 'Accepted' : 'Estimated'} total: ${emailDollars(totalCents)}\n\nOrder reference: ${id.slice(0, 8).toUpperCase()}`,
     },
   } : {
     id, table: 'orders', column: 'request_email_status', status: row.requestEmailStatus, key: 'order-request-' + id,
@@ -175,12 +175,12 @@ export async function sendConfirmation(env: Environment, shop: Shop, row: OrderR
   const payment = row.paymentToken && mode !== 'off'
     ? `\n${mode === 'test' ? 'Test checkout (no real charge)' : 'Pay securely'}: ${origin}/pay/${row.paymentToken}`
     : remainingDeposit > 0
-      ? `\nDeposit due: $${(remainingDeposit / 100).toFixed(2)}. Your builder will provide payment instructions.\nRemaining after deposit: $${(remainingBalance / 100).toFixed(2)}.`
-      : `\nBalance due at delivery: $${(remainingBalance / 100).toFixed(2)}.`;
+      ? `\nDeposit due: ${emailDollars(remainingDeposit)}. We’ll send you payment instructions.\nRemaining after deposit: ${emailDollars(remainingBalance)}.`
+      : `\nBalance due at delivery: ${emailDollars(remainingBalance)}.`;
   const result = await sendEmail(env.RESEND_API_KEY, env.CONSULT_FROM_EMAIL, 'order-confirmed-' + row.id, {
-    to: snapshot.customer.email, subject: `Delivery confirmed by ${shop.settings.name}`,
+    to: snapshot.customer.email, subject: `Your ${shop.settings.name} delivery is confirmed`,
     reply_to: shop.settings.publicEmail || shop.settings.contactEmail || undefined,
-    text: `Your racks are scheduled for ${formatWindow(window)} (${shop.settings.timezone}).\nOrder total: $${(snapshot.totalCents / 100).toFixed(2)}${payment}\n\nOrder ${row.id}`,
+    text: `We’ll deliver ${snapshot.racks.length === 1 ? 'your rack' : 'your racks'} on ${formatWindow(window)} (${shop.settings.timezone === 'America/Chicago' ? 'Central' : shop.settings.timezone}).\nOrder total: ${emailDollars(snapshot.totalCents)}${payment}\n\nOrder ${row.id}`,
   }, shop.settings.name);
   await env.DB.prepare(`UPDATE orders SET email_status = ? WHERE shop_id = ? AND id = ? AND email_status != 'sent'`).bind(result, shop.id, row.id).run();
   return orderData(await getOrder(env, shop, row.id));
@@ -189,16 +189,16 @@ export async function sendConfirmation(env: Environment, shop: Shop, row: OrderR
 type StripeSession = { id: string; status: string; url: string | null; payment_status: string; amount_total: number; currency: string; metadata?: { order_id?: string; shop_id?: string } };
 
 export async function beginCheckout(env: Environment, shop: Shop, token: string, origin: string) {
-  if (checkoutMode(env) === 'off' || !env.STRIPE_SECRET_KEY) throw new HttpError(503, 'Online payment is unavailable. Contact your builder.');
+  if (checkoutMode(env) === 'off' || !env.STRIPE_SECRET_KEY) throw new HttpError(503, 'We can’t take an online payment right now. Get in touch and we’ll help.');
   const row = await env.DB.prepare(`SELECT ${orderColumns} FROM orders WHERE shop_id = ? AND payment_token = ?`).bind(shop.id, token).first<OrderRow>();
-  if (!row) throw new HttpError(404, 'This payment link was not found.');
+  if (!row) throw new HttpError(404, 'We couldn’t find this payment link. Get in touch for a new one.');
   if (row.status === 'paid') return { paid: true };
-  if (row.status !== 'confirmed') throw new HttpError(409, 'This order is awaiting delivery confirmation.');
+  if (row.status !== 'confirmed') throw new HttpError(409, 'We’ll confirm delivery before you can pay online.');
   const { date, time } = shopClock(shop.settings.timezone);
   const snapshot = orderData(row).snapshot;
   const window = snapshot.windows.find(({ id }) => id === row.confirmedWindow);
   if (!window || window.date < date || (window.date === date && window.start <= time)) {
-    throw new HttpError(409, 'This delivery window has started or passed. Contact your builder before paying.');
+    throw new HttpError(409, 'This delivery window has started or passed. Get in touch with us before paying.');
   }
   if (row.checkoutSession) {
     const existing = await stripe<StripeSession>(env.STRIPE_SECRET_KEY, 'checkout/sessions/' + encodeURIComponent(row.checkoutSession));
@@ -206,7 +206,7 @@ export async function beginCheckout(env: Environment, shop: Shop, token: string,
     if (existing.status === 'complete') return { paid: existing.payment_status === 'paid' };
     const updated = await env.DB.prepare(`UPDATE orders SET checkout_session = NULL, checkout_attempt = checkout_attempt + 1
       WHERE shop_id = ? AND id = ? AND status = 'confirmed' AND checkout_session = ?`).bind(shop.id, row.id, row.checkoutSession).run();
-    if (!updated.meta.changes) throw new HttpError(409, 'Checkout changed. Please try again.');
+    if (!updated.meta.changes) throw new HttpError(409, 'The payment page changed. Please try again.');
     row.checkoutAttempt++;
   }
   const form = new URLSearchParams({
@@ -225,7 +225,7 @@ export async function beginCheckout(env: Environment, shop: Shop, token: string,
   const session = await stripe<StripeSession>(env.STRIPE_SECRET_KEY, 'checkout/sessions', form, `rack-${row.id}-${row.checkoutAttempt}`);
   await env.DB.prepare(`UPDATE orders SET checkout_session = ? WHERE shop_id = ? AND id = ? AND status = 'confirmed'
     AND checkout_attempt = ? AND checkout_session IS NULL`).bind(session.id, shop.id, row.id, row.checkoutAttempt).run();
-  if (!session.url) throw new HttpError(502, 'Checkout is temporarily unavailable.');
+  if (!session.url) throw new HttpError(502, 'We couldn’t open checkout. Please try again.');
   return { url: session.url };
 }
 

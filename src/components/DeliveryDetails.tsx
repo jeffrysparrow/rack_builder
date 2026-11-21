@@ -28,12 +28,12 @@ export function DeliveryPreferences({ timezone, windows, loading, failed, choice
   }
 
   return <fieldset className="order-preferences">
-    <legend>Preferred delivery times <small>(optional)</small></legend>
-    <p>Pick a date, then pick a time or choose all-day availability for that date. Times are {timezone === 'America/Chicago' ? 'Central Time' : `local to the shop (${timezone})`}. Your builder will confirm the delivery time with you.</p>
-    {loading && <p role="status">Checking available windows…</p>}
-    {failed && <p role="status">Delivery times are temporarily unavailable. You can still continue.</p>}
-    {!loading && !failed && !windows.length && <p>There are no posted windows right now. Your builder will work out a time with you.</p>}
-    {failed && <button type="button" className="text-button" onClick={onRefresh}>Refresh delivery times</button>}
+    <legend>When works for you? <small>(optional)</small></legend>
+    <p>Pick a preferred delivery time. All times are {timezone === 'America/Chicago' ? 'Central' : timezone}. We’ll confirm the final window with you. {canAdd && <>You can add backup times if you’d like.</>}</p>
+    {loading && <p role="status">Loading delivery times…</p>}
+    {failed && <p role="status">We couldn’t load delivery times. Try again or continue without picking a time.</p>}
+    {!loading && !failed && !windows.length && <p>No delivery times are listed right now. Send your request and we’ll work out a date.</p>}
+    {failed && <button type="button" className="text-button" onClick={onRefresh}>Try loading delivery times again</button>}
     {choices.length > 0 && <ol className="chosen-windows" ref={selectedList} tabIndex={-1}>
       {choices.map((choice, index) => <li key={choice}>
         <span><strong>{preferenceNames[index]}</strong>{describeDeliveryPreference(choice, windows)}</span>
@@ -55,12 +55,12 @@ export function DeliveryPreferences({ timezone, windows, loading, failed, choice
           <button type="button" key={window.id} className="window-choice" disabled={choices.includes(window.id)}
             onClick={() => choose(window.id)}>{formatWindowTime(window)}</button>)}
         {!hasSpecificWindow && <button type="button" className="window-choice" onClick={() => choose('day:' + activeDay)}>
-          I’m available all day
+          Any time that day
         </button>}
       </div>
     </div> : <button type="button" ref={addBackup} className="text-button backup-button" onClick={() => {
       setAdding(true);
       requestAnimationFrame(() => dateSelect.current?.focus());
-    }}>Add a backup time or date</button>)}
+    }}>Add a backup time</button>)}
   </fieldset>;
 }

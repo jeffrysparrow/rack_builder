@@ -5,7 +5,21 @@ import type { DepositPolicy } from '../src/config/payments';
 import { contactEmail, HttpError, requiredText } from './platform-services';
 
 export function readSettings(stored: string, origin = '', email = ''): AdminSettings {
-  return { ...defaultShop, deliveryOrigin: origin, contactEmail: email, ...JSON.parse(stored) };
+  const settings: AdminSettings = { ...defaultShop, deliveryOrigin: origin, contactEmail: email, ...JSON.parse(stored) };
+  if (settings.name === defaultShop.name) {
+    // Refresh the shop’s old default wording while keeping copy edited in admin.
+    if (settings.title === 'Custom wooden tote racks') settings.title = defaultShop.title;
+    if (settings.description === 'Get your garage organized with a rack sized for your 27-gallon totes.'
+      || settings.description === 'Get your garage or shed organized with a rack sized for your 27-gallon totes.'
+      || settings.description === 'Get your garage or shed organized with a rack sized for your 27-gallon totes. Keep it open or add a solid top for a work surface.') {
+      settings.description = defaultShop.description;
+    }
+    settings.title = settings.title.replace(/\bAustin\b/gi, 'Leander');
+    settings.description = settings.description.replace(/\bAustin\b/gi, 'Leander');
+    settings.serviceArea = settings.serviceArea.replace(/\bAustin\b/gi, 'Leander');
+    settings.buildLeadTime = settings.buildLeadTime.replace(/\bAustin\b/gi, 'Leander');
+  }
+  return settings;
 }
 
 export function publicSettings({ deliveryOrigin: _origin, contactEmail: _email, ...settings }: AdminSettings): ShopSettings {

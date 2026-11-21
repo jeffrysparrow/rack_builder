@@ -202,3 +202,7 @@ export function calculateRack(config: RackConfiguration, rules = defaultBuildRul
     width, height: cuts.height * INCH,
     depth: frameDepth + (plywoodBracing ? topThickness : thickness) };
 }
+
+export function outsideDimensions(layout: ReturnType<typeof calculateRack>) {
+  return { across: Math.ceil(layout.cuts.width), high: Math.ceil(layout.cuts.height), depth: Math.ceil(layout.depth / INCH) };
+}

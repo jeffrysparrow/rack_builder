@@ -19,12 +19,12 @@ export default defineConfig({
             <div class="carousel-heading">
               <h3 id="gallery-${id}">${title}</h3>
               <div class="carousel-controls">
-                <button type="button" data-slide="-1" aria-controls="gallery-track-${id}" aria-label="Previous photo in ${title}">‹</button>
-                <button type="button" data-slide="1" aria-controls="gallery-track-${id}" aria-label="Next photo in ${title}">›</button>
+                <button type="button" data-slide="-1" aria-controls="gallery-track-${id}" aria-label="Previous photo · ${title}">‹</button>
+                <button type="button" data-slide="1" aria-controls="gallery-track-${id}" aria-label="Next photo · ${title}">›</button>
               </div>
             </div>
             <ul class="carousel-track" id="gallery-track-${id}">
-              ${photos.map((photo) => `<li><a href="${rackPhotoSource(photo).full}">${photoMarkup(photo)}</a></li>`).join('')}
+              ${photos.map((photo) => `<li><figure><a href="${rackPhotoSource(photo).full}">${photoMarkup(photo)}</a><figcaption>${photo.title}</figcaption></figure></li>`).join('')}
             </ul>
           </section>`).join('\n'));
     },
