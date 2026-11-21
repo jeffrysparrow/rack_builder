@@ -17,7 +17,7 @@ const offerFrom = `FROM quote_offers v LEFT JOIN orders o ON o.shop_id = v.shop_
 async function getOffer(env: Environment, shop: Shop, token: string) {
   const row = await env.DB.prepare(`SELECT ${offerColumns} ${offerFrom} WHERE v.shop_id = ? AND v.token = ?`)
     .bind(shop.id, requestId(token)).first<OfferRow>();
-  if (!row) throw new HttpError(404, 'We couldn’t find this quote. Get in touch for a new link.');
+  if (!row) throw new HttpError(404, 'This quote isn’t available. Get in touch for a new link.');
   return row;
 }
 

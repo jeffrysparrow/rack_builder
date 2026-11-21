@@ -102,12 +102,12 @@ export function OrderRequest({ racks, dimensions, subtotal, revision, settings, 
     try {
       const estimate = await requestJson<Quote>('/api/delivery-quote', { ...address, revision });
       if (!Number.isSafeInteger(estimate.feeCents) || estimate.feeCents < 0 || typeof estimate.token !== 'string') {
-        throw new Error('We couldn’t calculate delivery. Check the address and try again.');
+        throw new Error('Couldn’t calculate delivery. Check the address and try again.');
       }
       setQuote(estimate);
       requestAnimationFrame(() => estimateStatus.current?.focus());
     } catch (failure) {
-      setEstimateError(failure instanceof TypeError ? 'We couldn’t calculate delivery. Check the address and try again.' : (failure as Error).message);
+      setEstimateError(failure instanceof TypeError ? 'Couldn’t calculate delivery. Check the address and try again.' : (failure as Error).message);
     } finally {
       setBusy(false);
     }
@@ -165,7 +165,7 @@ export function OrderRequest({ racks, dimensions, subtotal, revision, settings, 
       }} /> : <>
       {canSubmit && <PurchaseSteps current={step} onConfigure={configure} onDelivery={editDelivery} busy={busy} />}
       <div className="store-section-heading">
-        <h2 id="order-request-heading" tabIndex={-1} ref={heading}>{step === 'delivery' ? canSubmit ? 'Delivery & timing' : 'Estimate delivery' : 'Look good?'}</h2>
+        <h2 id="order-request-heading" tabIndex={-1} ref={heading}>{step === 'delivery' ? canSubmit ? 'Delivery & timing' : 'Estimate delivery' : 'Review your order request'}</h2>
       </div>
       {step === 'review' && <p>Double-check your rack size, tote brand, and delivery details before sending your request.</p>}
       <div className="checkout-grid">
@@ -197,12 +197,12 @@ export function OrderRequest({ racks, dimensions, subtotal, revision, settings, 
         </aside>
         <div className="checkout-fields">
           {step === 'delivery' ? <>
-            <p>{settings.serviceArea === defaultShop.serviceArea ? 'Leander-area delivery available.' : `We deliver to ${settings.serviceArea}.`}{settings.buildLeadTime && <> {settings.buildLeadTime}</>}</p>
+            <p>{settings.serviceArea === defaultShop.serviceArea ? 'Leander-area delivery available.' : `Delivery available in ${settings.serviceArea}.`}{settings.buildLeadTime && <> {settings.buildLeadTime}</>}</p>
             {canEstimate && <p>{settings.delivery.freeMiles > 0 && `First ${settings.delivery.freeMiles} driving miles are free, then `}
               {rateDollars.format(settings.delivery.extraMileRate)} per {settings.delivery.freeMiles > 0 ? 'additional ' : 'driving '}mile.</p>}
             <form key="delivery" className="delivery-form" onSubmit={finishDelivery}>
               <fieldset className="address-fields" disabled={busy}>
-                <legend>Where should we bring it?</legend>
+                <legend>Delivery address</legend>
                 <label className="delivery-field">Street address
                   <input name="street" autoComplete="shipping address-line1" required pattern={'.*\\S.*'} maxLength={160}
                     value={address.street} onChange={(event) => changeAddress('street', event.target.value)} />
@@ -239,8 +239,8 @@ export function OrderRequest({ racks, dimensions, subtotal, revision, settings, 
                     <div><dt>Delivery</dt><dd>{dollars.format(fee / 100)}</dd></div>
                     <div className="price-total"><dt>Total with delivery</dt><dd>{dollars.format(totalCents / 100)}</dd></div>
                   </dl>}
-                  {estimateError && <p>{estimateError} {canSubmit && <><a className="text-link" href="#consult">Get in touch</a> or send your request and we’ll check the fee.</>}</p>}
-                  {!canEstimate && <p>We’ll confirm the delivery fee after we check your address.</p>}
+                  {estimateError && <p>{estimateError} {canSubmit && <><a className="text-link" href="#consult">Get in touch</a> or send your request and I’ll check the fee.</>}</p>}
+                  {!canEstimate && <p>I’ll confirm the delivery fee after checking your address.</p>}
                 </div>
               </div>
               {canSubmit && <DeliveryPreferences timezone={settings.timezone} windows={windows ?? []} loading={loadingWindows || (!windows && !windowsError)}
@@ -260,7 +260,7 @@ export function OrderRequest({ racks, dimensions, subtotal, revision, settings, 
                 <h3>{choices.length > 1 ? 'Preferred delivery times' : 'Preferred delivery time'}</h3>
                 {choices.length ? <ol>{choices.map((choice) =>
                   <li key={choice}>{describeDeliveryPreference(choice, windows ?? [])}</li>)}</ol>
-                  : <p>We’ll work out a time with you.</p>}
+                  : <p>I’ll contact you to arrange delivery.</p>}
               </div>
               <button type="button" className="text-button" onClick={editDelivery} disabled={busy}>Edit delivery</button>
             </div>
@@ -279,10 +279,10 @@ export function OrderRequest({ racks, dimensions, subtotal, revision, settings, 
                   <label className="delivery-field">Email<input name="email" type="email" autoComplete="email" required maxLength={254} defaultValue={contact.email} /></label>
                   <label className="delivery-field">Phone<input name="phone" type="tel" autoComplete="tel" required maxLength={40} defaultValue={contact.phone} /></label>
                 </div>
-                <DiscoveryField defaultValue={contact.discovery} />
+                <DiscoveryField shopName={settings.name} defaultValue={contact.discovery} />
                 <input type="text" name="website" tabIndex={-1} autoComplete="off" defaultValue={contact.website} hidden />
               </fieldset>
-              <p className="request-payment-note"><strong>No payment is collected when you send this request.</strong> We’ll confirm the final details and any required deposit before starting your build.</p>
+              <p className="request-payment-note"><strong>No payment is collected when you send this request.</strong> I’ll confirm the details and any required deposit before I start building.</p>
               {error && <div ref={submissionError} tabIndex={-1} role="alert" className="checkout-error">
                 <p>{error}</p>
                 {error === deliveryEstimateExpired && <button type="button" className="text-button" onClick={() => {

@@ -25,8 +25,8 @@ export function OrderRequestConfirmation({ reference, rackSubtotalCents, deliver
   return <section ref={card} className="request-confirmation" tabIndex={-1} aria-labelledby={titleId}>
     <span className="request-confirmation-mark" aria-hidden="true">✓</span>
     <div>
-      <Heading id={titleId}>Got it! We’ve received your rack request.</Heading>
-      <p>We’ll review the details and get in touch to confirm your build and delivery. Thanks for choosing {shopName}.</p>
+      <Heading id={titleId}>Rack request received</Heading>
+      <p>Thanks for choosing {shopName}. I’ll review your request and get in touch to confirm the build and delivery.</p>
       <dl>
         <div><dt>Request number</dt><dd>{reference.slice(0, 8).toUpperCase()}</dd></div>
         <div><dt>{rackCount === 1 ? 'Rack requested' : 'Racks requested'}</dt><dd>{rackCount}</dd></div>
@@ -38,9 +38,9 @@ export function OrderRequestConfirmation({ reference, rackSubtotalCents, deliver
           <div><dt>Estimated total</dt><dd>{dollars.format((rackSubtotalCents + deliveryEstimateCents) / 100)}</dd></div>
         </>}
       </dl>
-      {emailStatus === 'sent' ? <p>We sent a confirmation email.</p>
+      {emailStatus === 'sent' ? <p>Confirmation email sent.</p>
         : emailStatus === 'failed' || emailStatus === 'unconfigured'
-          ? <p>We couldn’t send a confirmation email. Keep your request number for reference.</p>
+          ? <p>The confirmation email didn’t go through. Keep your request number for reference.</p>
           : <p>Keep your request number for reference.</p>}
       {onStartAnother && <button type="button" className="delivery-action delivery-edit" onClick={onStartAnother}>Design another rack</button>}
     </div>

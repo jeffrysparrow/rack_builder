@@ -184,7 +184,7 @@ export function Configurator({ shop }: { shop: Storefront }) {
         `Rack subtotal: ${dollars.format(price.total)} before delivery`].join('\n'));
       setCopyStatus('Rack estimate copied.');
     } catch {
-      setCopyStatus('We couldn’t copy your price. You can still share the link to your rack.');
+      setCopyStatus('Couldn’t copy the estimate. You can still share the rack link.');
     }
   }
 
@@ -197,7 +197,7 @@ export function Configurator({ shop }: { shop: Storefront }) {
     try {
       await navigator.clipboard.writeText(link);
       setShareLink('');
-      setShareStatus('Link copied!');
+      setShareStatus('Link copied.');
     } catch {
       setShareStatus('Copy the link below to share your rack.');
       setShareLink(link);
@@ -209,7 +209,7 @@ export function Configurator({ shop }: { shop: Storefront }) {
       <a className="identity" href="/"><span className="brand-icon"><Icon name="rack" /></span><span>{settings.name}</span></a>
       <nav className="site-nav" aria-label="Main navigation">
         <a href="#configure" onClick={(event) => { event.preventDefault(); returnToConfiguration(); }}>Design a rack</a>
-        <a href="/rack-builds/">Our work</a>
+        <a href="/rack-builds/">Rack gallery</a>
         {reviews.length > 0 && <a href="#reviews">Reviews</a>}
         {consultAvailable && <a href="#consult">Contact</a>}
       </nav>
@@ -217,10 +217,9 @@ export function Configurator({ shop }: { shop: Storefront }) {
     <main className={`workspace storefront-workspace${checkingOut ? ' checking-out' : ''}`} id="product">
       <section className="storefront-hero" ref={hero} hidden={checkingOut}>
         <div className="hero-copy">
-          <p className="hero-service">{settings.name === defaultShop.name && settings.serviceArea === defaultShop.serviceArea ? 'Hand-built in the Leander area' : settings.serviceArea}</p>
+          <p className="hero-service">{settings.name === defaultShop.name && settings.serviceArea === defaultShop.serviceArea ? 'Hand-built in Leander, TX' : settings.serviceArea}</p>
           <h1>{settings.title}</h1>
           <p className="hero-description">{settings.description}</p>
-          {settings.name === defaultShop.name && <p className="hero-aside">Less tote Jenga. More garage.</p>}
           <a href="#configure" className="hero-cta" onClick={(event) => { event.preventDefault(); returnToConfiguration(); }}>Design your rack</a>
         </div>
         <div className="hero-photo">
@@ -241,7 +240,7 @@ export function Configurator({ shop }: { shop: Storefront }) {
               <span className="viewer-size">{formatRackSize(config)}{multiple && ` · Rack ${activeIndex + 1} of ${racks.length}`}</span>
             </div>
             <div className="viewer-footer">
-              <span className="viewer-help"><Icon name="mouse" /><span className="mouse-hint">Drag to spin</span><span className="touch-hint">Swipe to spin</span></span>
+              <span className="viewer-help"><Icon name="mouse" /><span className="mouse-hint">Drag to rotate</span><span className="touch-hint">Swipe to rotate</span></span>
               <div className="viewer-actions">
                 <button className="viewer-button zoom-button" type="button" aria-label="Zoom out" title="Zoom out"
                   onClick={() => setZoom((step) => step - 1)}>−</button>
@@ -256,7 +255,7 @@ export function Configurator({ shop }: { shop: Storefront }) {
             if (consultAvailable) track('configurator_started');
           }}>
             <section className="setting-section config-intro">
-              <h2 ref={configureHeading} tabIndex={-1}>{multiple ? `Make rack ${activeIndex + 1} yours` : 'Make it yours'}</h2>
+              <h2 ref={configureHeading} tabIndex={-1}>{multiple ? `Design rack ${activeIndex + 1}` : 'Design your rack'}</h2>
               {shared.changed && <p role="status" className="layout-help">Some options from this link are no longer available. Check your rack before continuing.</p>}
               {multiple && <ul className="rack-options" aria-label="Racks in your order">
                 {racks.map((rack, index) => <li key={index}>
@@ -267,7 +266,7 @@ export function Configurator({ shop }: { shop: Storefront }) {
                   </button>
                 </li>)}
               </ul>}
-              <label className="tote-field" htmlFor="tote-brand">Which totes do you use?</label>
+              <label className="tote-field" htmlFor="tote-brand">Tote brand</label>
               <select className="tote-select" id="tote-brand" value={toteType}
                 disabled={config.includeTotesWithDelivery} aria-describedby="tote-fit-help"
                 onChange={(event) => {
@@ -278,12 +277,12 @@ export function Configurator({ shop }: { shop: Storefront }) {
               </select>
               <p className="layout-help" id="tote-fit-help">
                 {config.includeTotesWithDelivery
-                  ? `We’ll size your rack for the 27-gallon ${deliveryToteBrand} totes you’ve added.`
-                  : 'Tote sizes vary by brand. Make sure you choose yours.'}
+                  ? `Your rack will fit the 27-gallon ${deliveryToteBrand} totes you’ve added.`
+                  : 'Tote sizes vary by brand. Choose the brand you use.'}
               </p>
             </section>
             <section className="setting-section">
-              <div className="section-heading"><h2>How many totes?</h2><span className="capacity" aria-live="polite">{capacity} tote spaces</span></div>
+              <div className="section-heading"><h2>Rack size</h2><span className="capacity" aria-live="polite">{capacity} tote spaces</span></div>
               <div className="stepper-grid">
                 <Stepper label="Totes high" value={config.rows} minimum={minimumRackSize.rows} maximum={build.maxRows} onChange={(delta) => changeLayout('rows', delta)} />
                 <Stepper label="Totes across" value={config.columns} minimum={minimumRackSize.columns} maximum={build.maxColumns} onChange={(delta) => changeLayout('columns', delta)} />
@@ -320,14 +319,14 @@ export function Configurator({ shop }: { shop: Storefront }) {
               </fieldset>
             </section>
             <section className="setting-section accessories">
-              <h2>Wheels &amp; extras</h2>
+              <h2>Wheels and accessories</h2>
               <Toggle label="Add locking wheels" description={`${layout.casterCount} wheels · +${dollars.format(layout.casterCount * rates.caster)}`}
                 checked={config.includeCasters} onChange={(value) => update('includeCasters', value)} />
-              {canAddTotes ? <Toggle label="Need the totes, too?"
+              {canAddTotes ? <Toggle label="Add storage totes"
                 description={`27-gallon ${deliveryToteBrand} only · ${capacity} for +${dollars.format(capacity * rates.tote)}`}
                 checked={config.includeTotesWithDelivery} onChange={(value) => update('includeTotesWithDelivery', value)} />
-                : <p className="layout-help">We only supply 27-gallon {deliveryToteBrand} totes. To add totes, choose {deliveryToteBrand} for your rack.</p>}
-              <Toggle label="Show totes in 3D" description="Just for the preview. No totes are added to your order." checked={config.includeBins}
+                : <p className="layout-help">Only 27-gallon {deliveryToteBrand} totes are available. Choose {deliveryToteBrand} as your tote brand to add them.</p>}
+              <Toggle label="Show totes in 3D" description="For the preview only." checked={config.includeBins}
                 onChange={(value) => update('includeBins', value)} />
             </section>
             <section className="setting-section pricing" aria-labelledby="pricing-heading">
@@ -361,7 +360,7 @@ export function Configurator({ shop }: { shop: Storefront }) {
         canEstimate={deliveryAvailable} canSubmit={consultAvailable} active={checkingOut} onConfigure={returnToConfiguration} />}
       <CustomerReviews reviews={reviews} />
       <section className="store-section storefront-photos" aria-labelledby="storefront-photos-heading">
-        <div className="store-section-heading"><h2 id="storefront-photos-heading">Racks we’ve built</h2></div>
+        <div className="store-section-heading"><h2 id="storefront-photos-heading">Past builds</h2></div>
         {rackPhotoGroups.map(({ id, title, photos }) => <section className="rack-carousel" key={id} aria-labelledby={`storefront-photos-${id}`}>
           <div className="carousel-heading">
             <h3 id={`storefront-photos-${id}`}>{title}</h3>
@@ -381,11 +380,11 @@ export function Configurator({ shop }: { shop: Storefront }) {
           </ul>
         </section>)}
         <div className="photo-links">
-          <a href="/rack-builds/" className="text-link">See more of our work</a>
+          <a href="/rack-builds/" className="text-link">See more builds</a>
           {consultAvailable && <a href="#consult" className="text-link">Ask about a custom rack</a>}
         </div>
       </section>
-      {consultAvailable && <StorefrontDetails racks={racks} publicEmail={settings.publicEmail} />}
+      {consultAvailable && <StorefrontDetails racks={racks} publicEmail={settings.publicEmail} shopName={settings.name} />}
       {import.meta.env.MODE === 'storefront' && <details className="settings cut-list">
         <summary id="cut-list-heading">2×4 cut list{multiple && ` · all ${racks.length} racks`}</summary>
         <table aria-labelledby="cut-list-heading">

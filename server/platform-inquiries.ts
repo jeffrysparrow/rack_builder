@@ -33,8 +33,8 @@ export async function notifyInquiry(env: Environment, shop: Shop, row: InquiryRo
     await sendRequestEmail(env, shop, {
       id, table: 'inquiries', column: 'receipt_email_status', status: row.receiptEmailStatus, key: 'quote-receipt-' + id,
       message: {
-        to: email, reply_to: shop.settings.publicEmail || shop.settings.contactEmail || undefined, subject: `We got your rack request · ${shop.settings.name}`,
-        text: `Thanks, ${quote.name}. We got your rack request. We’ll follow up with a quote and confirm the details, delivery and any required deposit before we start. No payment was collected.\n\n${summary}\n\nRequest reference: ${id.slice(0, 8).toUpperCase()}`,
+        to: email, reply_to: shop.settings.publicEmail || shop.settings.contactEmail || undefined, subject: `Rack request received · ${shop.settings.name}`,
+        text: `Thanks, ${quote.name}. I’ll review your rack request and follow up with a quote. I’ll confirm the details, delivery, and any required deposit before I start building. No payment was collected.\n\n${summary}\n\nRequest reference: ${id.slice(0, 8).toUpperCase()}`,
       },
     });
   } else if (!receipt) {
@@ -71,7 +71,7 @@ export async function requestRackQuote(env: Environment, shop: Shop, fields: Rec
   const email = contactEmail(fields.email);
   const savedQuote = await getInquiry(env, shop, id);
   if (savedQuote) return quoteResult(savedQuote, email);
-  if (fields.revision !== shop.revision) throw new HttpError(409, 'Our pricing or options changed. Refresh the page and check your rack before trying again.');
+  if (fields.revision !== shop.revision) throw new HttpError(409, 'Pricing or rack options changed. Refresh the page and check your rack before trying again.');
 
   const racks = rackSnapshot(fields.racks, shop);
   const { windows, deliveryPreferences } = await requestedQuotePreferences(env, shop, fields.windows);
@@ -112,7 +112,7 @@ export async function requestRackQuote(env: Environment, shop: Shop, fields: Rec
   if (!write.meta.changes) {
     const existing = await getInquiry(env, shop, id);
     if (existing) return quoteResult(existing, email);
-    throw new HttpError(409, 'Our pricing or options changed. Refresh the page and check your rack before trying again.');
+    throw new HttpError(409, 'Pricing or rack options changed. Refresh the page and check your rack before trying again.');
   }
 
   const row: InquiryRow = { id, snapshot: json, createdAt: '', qualified: 0, emailStatus: 'pending', receiptEmailStatus: 'pending' };

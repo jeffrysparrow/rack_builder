@@ -23,7 +23,7 @@ function PaymentPage({ token }: { token: string }) {
     setStatus('');
     try {
       const result = await requestJson<{ paid?: boolean; url?: string; test?: boolean }>('/api/checkout', { token });
-      if (result.paid) setStatus('We’ve already received payment for this order.');
+      if (result.paid) setStatus('This order has already been paid.');
       else if (result.url && result.test) {
         setStatus('Stripe is in test mode. Use a test card only.');
         setCheckoutUrl(result.url);
@@ -50,7 +50,7 @@ function PrivatePage({ path }: { path: string }) {
   if (path.startsWith('/pay/')) return <PaymentPage token={path.slice(5)} />;
   if (path.startsWith('/quote/')) return <CustomerOffer token={path.slice(7)} />;
   if (path === '/order-received') return <main className="payment-page store-section">
-    <h1>Payment status</h1><p>If you paid through Stripe, we’ll see the result once Stripe has finished processing it.</p><a href="/">Back to the shop</a>
+    <h1>Payment status</h1><p>Payments made through Stripe appear on your order once processing is complete.</p><a href="/">Back to the shop</a>
   </main>;
   return null;
 }
@@ -70,7 +70,7 @@ if (import.meta.env.MODE === 'storefront') {
   }).catch(() => {
     const message = document.createElement('p');
     message.className = 'workspace';
-    message.textContent = 'We couldn’t load the rack designer. Refresh the page and try again.';
+    message.textContent = 'The rack designer didn’t load. Refresh the page and try again.';
     message.setAttribute('role', 'status');
     root.append(message);
   });

@@ -318,7 +318,6 @@ html:has(.storefront-workspace) {
 .hero-copy > p { margin: 0; }
 .hero-copy .hero-service { margin-bottom: .8rem; color: #f0bf8d; font-size: .875rem; font-weight: 680; }
 .hero-copy h1 { max-width: 15ch; font-size: clamp(2.65rem, 5.4vw, 5rem); }
-.hero-copy .hero-aside { margin-top: .65rem; font-size: .9rem; }
 .hero-copy .hero-description { margin-top: 1rem; line-height: 1.55; max-width: 39ch; }
 .hero-cta {
   display: inline-flex; min-height: 2.75rem; align-items: center; margin-top: 1.15rem; padding: .65rem .9rem;

@@ -210,14 +210,14 @@ async function api(request: Request, env: Environment, url: URL) {
     return new Response(null, { status: 204 });
   }
   if (pathname === '/api/delivery-quote') {
-    if (!deliveryAvailable || !env.GOOGLE_MAPS_API_KEY || !env.QUOTE_SIGNING_SECRET) throw new HttpError(503, 'We can’t calculate delivery online right now. Please try again later.');
-    if (fields.revision !== shop.revision) throw new HttpError(409, 'Our pricing or options changed. Refresh the page and check your rack before trying again.');
+    if (!deliveryAvailable || !env.GOOGLE_MAPS_API_KEY || !env.QUOTE_SIGNING_SECRET) throw new HttpError(503, 'Online delivery estimates are unavailable. Please try again later.');
+    if (fields.revision !== shop.revision) throw new HttpError(409, 'Pricing or rack options changed. Refresh the page and check your rack before trying again.');
     const destination = streetAddress(fields);
     const feeCents = await routeFee(destination, shop.settings, env.GOOGLE_MAPS_API_KEY);
     return json({ feeCents, token: await createQuote(shop, destination, feeCents, env.QUOTE_SIGNING_SECRET) });
   }
   if (!requestsAvailable && (pathname === '/api/consult' || pathname === '/api/orders' || pathname === '/api/quotes')) {
-    throw new HttpError(503, 'We can’t take requests online right now. Please try again later.');
+    throw new HttpError(503, 'Online requests are unavailable. Please try again later.');
   }
   if (pathname === '/api/consult') return json(await consult(env, shop, fields), 201);
   if (pathname === '/api/quotes') return json(await requestRackQuote(env, shop, fields), 201);
@@ -254,7 +254,7 @@ export default {
       if (error instanceof HttpError) return json({ error: error.message }, error.status);
       if (error instanceof SyntaxError) return json({ error: 'Check the submitted fields.' }, 400);
       console.error('Platform request failed', request.method, url.pathname.startsWith('/api/') ? url.pathname : 'page');
-      return json({ error: 'Something went wrong on our end. Please try again shortly.' }, 500);
+      return json({ error: 'Something went wrong. Please try again shortly.' }, 500);
     }
   },
 };

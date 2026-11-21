@@ -83,7 +83,7 @@ export async function requestJson<T>(path: string, body?: unknown, method = body
     ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
   });
   if (!response.headers.get('Content-Type')?.includes('application/json')) {
-    throw new Error('We couldn’t load that. Refresh the page and try again.');
+    throw new Error('The page couldn’t load the information it needs. Refresh and try again.');
   }
   const data = await response.json();
   if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Something went wrong. Please try again.');
